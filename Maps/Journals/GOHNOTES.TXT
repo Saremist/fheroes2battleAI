@@ -1,0 +1,16 @@
+Map:  Gates of Hell
+
+Gates of Hell
+
+This is a two-player alliance map.  If the Blue and Green sides do not work together, I don't think either has a chance to win.  If you only have one person, you can play this map in HOTSEAT mode and simply play both sides.  I set it up so you can't have a computer player as your ally - the computer would die a miserable death in the first week and doom you in the process.
+
+Normally, I don't rate the maps I do for difficulty, preferring to leave them at "Normal" and let the map speak for itself, but if any map I've done every qualified as Expert, it's this one.  You have to be an Expert player just to survive the first week.  After that, the map stabilizes a little and you should be able to employ fairly conventional strategies to win, but the first week is going to take some thought.
+
+Because the map throws you into this scenario in a VERY precarious position, I have included several "HINT" files with it.  I've chopped up the hints into several files, so you if you need a hint you won't
+have to spoil the whole map for yourself.  There are four Hint files, and each consecutive one contains a more thorough piece of advice on what you have to do to win.  Read only the ones you think you need.
+There are hints in the map itself as well, so hopefully it shouldn't be impossible to determine what you need to do.
+
+Here's sort of a preliminary hint - the Demon Guardians for the Red player (you'll know them when you see them) are very scary, but they will not move.  The only way you will end up fighting them is if you initiate the attack.
+
+This is probably the last of my non-Expansion maps.  I intend to go back and do a few Expansion modifications on some of the maps I've already done.
+
