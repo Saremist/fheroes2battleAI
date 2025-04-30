@@ -54,6 +54,8 @@ namespace Game
 
     void mainGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
+    void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
+
     fheroes2::GameMode MainMenu( const bool isFirstGameRun );
     fheroes2::GameMode NewGame( const bool isProbablyDemoVersion );
     fheroes2::GameMode LoadGame();

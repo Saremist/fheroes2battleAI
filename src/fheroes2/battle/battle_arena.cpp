@@ -660,6 +660,9 @@ void Battle::Arena::Turns()
     if ( result_game.army1 || result_game.army2 ) {
         result_game.exp1 = _army2->GetDeadHitPoints();
         result_game.exp2 = _army1->GetDeadHitPoints();
+        result_game.AIScore1 = _army2->GetHitPointsRate();
+        result_game.AIScore2 = _army1->GetHitPointsRate();
+        result_game.AIScoreBalance = result_game.AIScore1 - result_game.AIScore2;
 
         const HeroBase * army1Commander = _army1->GetCommander();
         const HeroBase * army2Commander = _army2->GetCommander();

@@ -1,4 +1,4 @@
-/***************************************************************************
+﻿/***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
  *   Copyright (C) 2019 - 2024                                             *
  *                                                                         *
@@ -20,14 +20,16 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-
 #ifndef H2BATTLE_H
 #define H2BATTLE_H
 
 #include <cstdint>
+#include <iostream>
 #include <vector>
 
 class Army;
+class Funds;
+class HeroBase;
 
 namespace Battle
 {
@@ -47,6 +49,9 @@ namespace Battle
         uint32_t army2{ 0 };
         uint32_t exp1{ 0 };
         uint32_t exp2{ 0 };
+        float AIScore1{ 0 };
+        float AIScore2{ 0 };
+        float AIScoreBalance{ 0 };
         uint32_t killed{ 0 };
 
         bool AttackerWins() const;
@@ -55,9 +60,38 @@ namespace Battle
         uint32_t DefenderResult() const;
         uint32_t GetExperienceAttacker() const;
         uint32_t GetExperienceDefender() const;
+
+        // Define the operator<< for Result
+        friend std::ostream & operator<<( std::ostream & os, const Result & result )
+        {
+            os << "Result:" << std::endl;
+            os << "  Army 1: " << result.army1 << std::endl;
+            os << "  Army 2: " << result.army2 << std::endl;
+            os << "  Experience 1: " << result.exp1 << std::endl;
+            os << "  Experience 2: " << result.exp2 << std::endl;
+            os << "  AIScore 1: " << result.AIScore1 << std::endl;
+            os << "  AIScore 2: " << result.AIScore2 << std::endl;
+            os << "  AIScore Balance: " << result.AIScoreBalance << std::endl;
+            os << "  Killed: " << result.killed << std::endl;
+            os << "  Attacker Wins: " << ( result.AttackerWins() ? "Yes" : "No" ) << std::endl;
+            os << "  Defender Wins: " << ( result.DefenderWins() ? "Yes" : "No" ) << std::endl;
+            os << "  Attacker Result: " << result.AttackerResult() << std::endl;
+            os << "  Defender Result: " << result.DefenderResult() << std::endl;
+            os << "  Experience Attacker: " << result.GetExperienceAttacker() << std::endl;
+            os << "  Experience Defender: " << result.GetExperienceDefender() << std::endl;
+            return os;
+        }
     };
 
+    // Main entry point
     Result Loader( Army &, Army &, int32_t );
+
+    // 🆕 New sub-functions to support modular Loader:
+    bool PrepareBattle( Army & army1, Army & army2, int32_t mapsindex, Result & result, bool & isHumanBattle, uint32_t & initialSpellPoints1,
+                        uint32_t & initialSpellPoints2, Funds & initialFunds1, Funds & initialFunds2, HeroBase *& commander1, HeroBase *& commander2 );
+    Result ExecuteBattleLoop( Army & army1, Army & army2, int32_t mapsindex, bool showBattle, const uint32_t battleSeed, const Funds & initialFunds1,
+                              const Funds & initialFunds2, HeroBase * commander1, HeroBase * commander2, bool isHumanBattle );
+    void FinalizeBattleResult( Result & result, Army & army1, Army & army2, HeroBase * commander1, HeroBase * commander2 );
 
     struct TargetInfo
     {
@@ -86,8 +120,6 @@ namespace Battle
         TR_MOVED = 0x00000002,
         TR_SKIP = 0x00000004,
 
-        // UNUSED = 0x00000008,
-
         LUCK_GOOD = 0x00000100,
         LUCK_BAD = 0x00000200,
         MORALE_GOOD = 0x00000400,
@@ -97,8 +129,6 @@ namespace Battle
         CAP_SUMMONELEM = 0x00002000,
         CAP_MIRROROWNER = 0x00004000,
         CAP_MIRRORIMAGE = 0x00008000,
-
-        // UNUSED = 0x00010000,
 
         SP_BLOODLUST = 0x00020000,
         SP_BLESS = 0x00040000,

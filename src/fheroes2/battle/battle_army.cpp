@@ -291,6 +291,17 @@ uint32_t Battle::Force::GetDeadHitPoints() const
     return res;
 }
 
+float Battle::Force::GetHitPointsRate() const // calculates lost hitpoints/total hitpoints of leftover units
+{
+    float res = 0;
+
+    for ( const_iterator it = begin(); it != end(); ++it ) {
+        res += static_cast<Monster *>( *it )->GetHitPoints() * ( *it )->GetInitialCount();
+    }
+    return (float) 1.0 - this->GetDeadHitPoints() / res;
+}
+
+
 void Battle::Force::SyncArmyCount()
 {
     for ( uint32_t index = 0; index < army.Size(); ++index ) {

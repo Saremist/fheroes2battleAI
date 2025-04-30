@@ -18,6 +18,12 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\fheroes2\ai\NN_ai.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\fheroes2\ai\NN_ai.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{DD8F214C-C405-4951-8F98-66B969BA8E08}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>

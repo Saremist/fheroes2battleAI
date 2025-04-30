@@ -615,96 +615,6 @@ void AI::BattlePlanner::battleBegins()
 
 
 
-//void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
-//{
-//    // Return immediately if our limit of turns has been exceeded
-//    if ( isLimitOfTurnsExceeded( arena, actions ) ) {
-//        return;
-//    }
-//
-//    const Battle::Actions plannedActions = planUnitTurn( arena, currentUnit );
-//
-//    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << plannedActions.size() << " actions)" << std::endl;
-//
-//    int index = 0;
-//    for ( const auto & action : plannedActions ) {
-//        std::cout << "Action " << index++ << ": ";
-//
-//        if ( action.empty() ) {
-//            std::cout << "EMPTY ACTION" << std::endl;
-//            continue;
-//        }
-//
-//        // First element in the vector probably represents the CommandType
-//        int commandType = action[0];
-//        std::cout << "Type = " << commandType << ", Params = [ ";
-//
-//        // Print all parameters in the vector
-//        for ( size_t i = 1; i < action.size(); ++i ) {
-//            std::cout << action[i];
-//            if ( i < action.size() - 1 ) {
-//                std::cout << ", ";
-//            }
-//        }
-//        std::cout << " ]" << std::endl;
-//    }
-//
-//    actions.insert( actions.end(), plannedActions.begin(), plannedActions.end() );
-//}
-
-#include <filesystem>
-#include <iostream>
-#include <vector>
-#include <torch/torch.h>
-
-struct BattleLSTMImpl : torch::nn::Module
-{
-    torch::nn::LSTM lstm_layer{ nullptr };
-    torch::nn::Linear fc{ nullptr };
-
-    BattleLSTMImpl( int64_t input_size, int64_t hidden_size, int64_t output_size, int64_t num_layers)
-        : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
-        , fc( hidden_size, output_size )
-    {
-        register_module( "lstm_layer", lstm_layer );
-        register_module( "fc", fc );
-    }
-
-    torch::Tensor forward( torch::Tensor x )
-    {
-        // Initialize the hidden and cell states to zero
-        auto h0 = torch::zeros( { lstm_layer->options.num_layers(), x.size( 0 ), lstm_layer->options.hidden_size() } );
-        auto c0 = torch::zeros( { lstm_layer->options.num_layers(), x.size( 0 ), lstm_layer->options.hidden_size() } );
-
-        // Pass through LSTM layer
-        auto lstm_out = std::get<0>( lstm_layer( x, std::make_tuple( h0, c0 ) ) );
-
-        // Get the output from the last timestep
-        auto last_timestep = lstm_out.index( { -1 } );
-
-        // Pass the last hidden state through the fully connected layer
-        return fc( last_timestep );
-    }
-};
-TORCH_MODULE( BattleLSTM );
-
-void createAndSaveModel( const std::string & model_path )
-{
-    int64_t input_size = 10; // Adjust based on your input features
-    int64_t hidden_size = 128;
-    int64_t output_size = 5; // Adjust based on your output actions
-    int64_t num_layers = 1;
-
-    try {
-        BattleLSTM model( input_size, hidden_size, output_size, num_layers );
-        // Save the model
-        torch::save( model, model_path );
-    }
-    catch ( const std::exception & e ) {
-        std::cerr << "Error creating or saving the model: " << e.what() << std::endl;
-    }
-}
-
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
 {
     // Return immediately if our limit of turns has been exceeded
@@ -712,62 +622,74 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         return;
     }
 
-    // Define the model path
-    const std::string model_path = "battle_lstm.pt";
+    const Battle::Actions plannedActions = planUnitTurn( arena, currentUnit );
 
-    // Check if the model file exists
-    if ( !std::filesystem::exists( model_path ) ) {
-        // Create and save the model if it does not exist
-        createAndSaveModel( model_path );
-    }
+    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << plannedActions.size() << " actions)" << std::endl;
 
-    torch::Device device( torch::kCPU );
+    int index = 0;
+    for ( const auto & action : plannedActions ) {
+        std::cout << "Action " << index++ << ": ";
 
-    // Load the LSTM model
-    static BattleLSTM model( 10, 128, 5, 1 ); // Adjust based on your model parameters
-    model -> to( device );
-    static bool model_loaded = false;
-    if ( !model_loaded ) {
-        try {
-            torch::load( model, model_path );
-            model_loaded = true;
+        if ( action.empty() ) {
+            std::cout << "EMPTY ACTION" << std::endl;
+            continue;
         }
-        catch ( const std::exception & e ) {
-            std::cerr << "Error loading the model: " << e.what() << std::endl;
-            return;
+
+        // First element in the vector probably represents the CommandType
+        int commandType = action[0];
+        std::cout << "Type = " << commandType << ", Params = [ ";
+
+        // Print all parameters in the vector
+        for ( size_t i = 1; i < action.size(); ++i ) {
+            std::cout << action[i];
+            if ( i < action.size() - 1 ) {
+                std::cout << ", ";
+            }
         }
+        std::cout << " ]" << std::endl;
     }
 
-    // Prepare the input for the model
-    torch::Tensor input = torch::rand( { 1, 1, 10 } ); // Adjust based on your input features
-
-    // Get the model's prediction
-    torch::Tensor output = model->forward( input );
-    int predicted_action = output.argmax( 1 ).item<int>();
-    // Convert the predicted action to a Battle::Command and add it to actions
-    switch ( predicted_action ) {
-    case 0:
-        actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), 0 ); //, /* target cell */
-        break;
-    case 1:
-        actions.emplace_back( Battle::Command::ATTACK, currentUnit.GetUID(), 0, 0, 0, 0 ); //, /* target unit UID */, /* target cell */
-        break;
-    case 2:
-        actions.emplace_back( Battle::Command::SPELLCAST, 0, 0 ); //, /* spell ID */, /* target cell */
-        break;
-    case 3:
-        actions.emplace_back( Battle::Command::RETREAT );
-        break;
-    case 4:
-        actions.emplace_back( Battle::Command::SURRENDER );
-        break;
-    default:
-        actions.emplace_back( Battle::Command::SKIP, currentUnit.GetUID() );
-        break;
-    }
-
-    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << actions.size() << " actions)" << std::endl;
+    actions.insert( actions.end(), plannedActions.begin(), plannedActions.end() );
 }
+
+#include <filesystem>
+#include <iostream>
+
+
+//void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
+//{
+//    // Return immediately if our limit of turns has been exceeded
+//    if ( isLimitOfTurnsExceeded( arena, actions ) ) {
+//        return;
+//    }
+//
+//    // Get the model's prediction
+//    torch::Tensor output = model->forward( input );
+//    int predicted_action = output.argmax( 1 ).item<int>();
+//    // Convert the predicted action to a Battle::Command and add it to actions
+//    switch ( predicted_action ) {
+//    case 0:
+//        actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), 0 ); //, /* target cell */
+//        break;
+//    case 1:
+//        actions.emplace_back( Battle::Command::ATTACK, currentUnit.GetUID(), 0, 0, 0, 0 ); //, /* target unit UID */, /* target cell */
+//        break;
+//    case 2:
+//        actions.emplace_back( Battle::Command::SPELLCAST, 0, 0 ); //, /* spell ID */, /* target cell */
+//        break;
+//    case 3:
+//        actions.emplace_back( Battle::Command::RETREAT );
+//        break;
+//    case 4:
+//        actions.emplace_back( Battle::Command::SURRENDER );
+//        break;
+//    default:
+//        actions.emplace_back( Battle::Command::SKIP, currentUnit.GetUID() );
+//        break;
+//    }
+//
+//    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << actions.size() << " actions)" << std::endl;
+//}
 
 
 bool AI::BattlePlanner::isLimitOfTurnsExceeded( const Battle::Arena & arena, Battle::Actions & actions )
@@ -1628,6 +1550,14 @@ Battle::Actions AI::BattlePlanner::archerDecision( Battle::Arena & arena, const 
     return actions;
 }
 
+
+#include <stdio.h>
+
+void PrintUnitInfo( const Battle::Unit & unit )
+{
+    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:"<< unit.GetID() << ", Count: " << unit.GetCount() << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << std::endl;
+}
+
 AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena, const Battle::Unit & currentUnit ) const
 {
     BattleTargetPair target;
@@ -1636,6 +1566,26 @@ AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena,
 
     // Current unit can be under the influence of the Hypnotize spell
     const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+
+    std::cout << "enmeies:" << std::endl; 
+    for ( const Battle::Unit * enemy : enemies ) {
+        assert( enemy != nullptr );
+        PrintUnitInfo( *enemy );
+    }
+    std::cout << std::endl;
+
+    std::cout << "allies:" << std::endl;
+    for ( const Battle::Unit * allie : allies ) {
+        assert( allie != nullptr );
+        PrintUnitInfo( *allie );
+    }
+    std::cout << std::endl;
+
+    std::cout << "currentUnit:" << std::endl;
+    PrintUnitInfo( currentUnit );
+    std::cout << std::endl;
+
 
     // 1. Choose the best target within reach, if any
     {
@@ -1645,6 +1595,7 @@ AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena,
             assert( enemy != nullptr );
 
             const MeleeAttackOutcome outcome = BestAttackOutcome( currentUnit, *enemy, valuesOfAttackPositions );
+
 
             if ( !outcome.canAttackImmediately ) {
                 continue;

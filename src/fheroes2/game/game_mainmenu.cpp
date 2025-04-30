@@ -215,6 +215,88 @@ void Game::mainGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion )
     fheroes2::fadeOutDisplay();
 }
 
+#include <iostream>;
+
+std::string gameModeToString( fheroes2::GameMode mode ) // used to debug gamemodes
+{
+    static const std::unordered_map<fheroes2::GameMode, std::string> modeToString
+        = { { fheroes2::GameMode::CANCEL, "CANCEL" },
+            { fheroes2::GameMode::QUIT_GAME, "QUIT_GAME" },
+            { fheroes2::GameMode::MAIN_MENU, "MAIN_MENU" },
+            { fheroes2::GameMode::NEW_GAME, "NEW_GAME" },
+            { fheroes2::GameMode::LOAD_GAME, "LOAD_GAME" },
+            { fheroes2::GameMode::HIGHSCORES_STANDARD, "HIGHSCORES_STANDARD" },
+            { fheroes2::GameMode::HIGHSCORES_CAMPAIGN, "HIGHSCORES_CAMPAIGN" },
+            { fheroes2::GameMode::CREDITS, "CREDITS" },
+            { fheroes2::GameMode::NEW_STANDARD, "NEW_STANDARD" },
+            { fheroes2::GameMode::NEW_CAMPAIGN_SELECTION, "NEW_CAMPAIGN_SELECTION" },
+            { fheroes2::GameMode::NEW_SUCCESSION_WARS_CAMPAIGN, "NEW_SUCCESSION_WARS_CAMPAIGN" },
+            { fheroes2::GameMode::NEW_PRICE_OF_LOYALTY_CAMPAIGN, "NEW_PRICE_OF_LOYALTY_CAMPAIGN" },
+            { fheroes2::GameMode::NEW_MULTI, "NEW_MULTI" },
+            { fheroes2::GameMode::NEW_HOT_SEAT, "NEW_HOT_SEAT" },
+            { fheroes2::GameMode::NEW_BATTLE_ONLY, "NEW_BATTLE_ONLY" },
+            { fheroes2::GameMode::LOAD_STANDARD, "LOAD_STANDARD" },
+            { fheroes2::GameMode::LOAD_CAMPAIGN, "LOAD_CAMPAIGN" },
+            { fheroes2::GameMode::LOAD_MULTI, "LOAD_MULTI" },
+            { fheroes2::GameMode::LOAD_HOT_SEAT, "LOAD_HOT_SEAT" },
+            { fheroes2::GameMode::SELECT_SCENARIO_ONE_HUMAN_PLAYER, "SELECT_SCENARIO_ONE_HUMAN_PLAYER" },
+            { fheroes2::GameMode::SELECT_SCENARIO_TWO_HUMAN_PLAYERS, "SELECT_SCENARIO_TWO_HUMAN_PLAYERS" },
+            { fheroes2::GameMode::SELECT_SCENARIO_THREE_HUMAN_PLAYERS, "SELECT_SCENARIO_THREE_HUMAN_PLAYERS" },
+            { fheroes2::GameMode::SELECT_SCENARIO_FOUR_HUMAN_PLAYERS, "SELECT_SCENARIO_FOUR_HUMAN_PLAYERS" },
+            { fheroes2::GameMode::SELECT_SCENARIO_FIVE_HUMAN_PLAYERS, "SELECT_SCENARIO_FIVE_HUMAN_PLAYERS" },
+            { fheroes2::GameMode::SELECT_SCENARIO_SIX_HUMAN_PLAYERS, "SELECT_SCENARIO_SIX_HUMAN_PLAYERS" },
+            { fheroes2::GameMode::START_GAME, "START_GAME" },
+            { fheroes2::GameMode::SAVE_GAME, "SAVE_GAME" },
+            { fheroes2::GameMode::END_TURN, "END_TURN" },
+            { fheroes2::GameMode::SELECT_CAMPAIGN_SCENARIO, "SELECT_CAMPAIGN_SCENARIO" },
+            { fheroes2::GameMode::COMPLETE_CAMPAIGN_SCENARIO, "COMPLETE_CAMPAIGN_SCENARIO" },
+            { fheroes2::GameMode::COMPLETE_CAMPAIGN_SCENARIO_FROM_LOAD_FILE, "COMPLETE_CAMPAIGN_SCENARIO_FROM_LOAD_FILE" },
+            { fheroes2::GameMode::EDITOR_MAIN_MENU, "EDITOR_MAIN_MENU" },
+            { fheroes2::GameMode::EDITOR_NEW_MAP, "EDITOR_NEW_MAP" },
+            { fheroes2::GameMode::EDITOR_LOAD_MAP, "EDITOR_LOAD_MAP" } };
+
+    auto it = modeToString.find( mode );
+    return it != modeToString.end() ? it->second : "UNKNOWN_MODE";
+}
+
+void Game::trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion )
+{
+    fheroes2::GameMode result = fheroes2::GameMode::NEW_BATTLE_ONLY;
+
+    bool exit = false;
+
+    while ( !exit ) {
+        std::cout << gameModeToString( result ) << std::endl;
+        switch ( result ) {
+        case fheroes2::GameMode::QUIT_GAME:
+            exit = true;
+            break;
+        case fheroes2::GameMode::MAIN_MENU:
+            //result = Game::NewBattleOnly(); //loop back to battle only if trying to leave 
+            result = Game::MainMenu(false);
+            break;
+        case fheroes2::GameMode::NEW_GAME:
+            result = Game::NewBattleOnly(); // new game sets up battle only
+            break;
+        case fheroes2::GameMode::NEW_BATTLE_ONLY:
+            result = Game::NewBattleOnly();
+            break;
+        case fheroes2::GameMode::NEW_MULTI:
+            result = Game::NewHotSeat();
+            break;
+        default:
+            // If this assertion blows up then you are entering an infinite loop!
+            // Add the logic for the newly added entry.
+            assert( 0 );
+            exit = true;
+            break;
+        }
+    }
+
+    // We are quitting the game, so fade-out the screen.
+    fheroes2::fadeOutDisplay();
+}
+
 fheroes2::GameMode Game::MainMenu( const bool isFirstGameRun )
 {
     // Stop all sounds, but not the music

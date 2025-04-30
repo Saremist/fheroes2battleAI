@@ -134,6 +134,7 @@ namespace Battle
 
         uint32_t GetDeadHitPoints() const;
         uint32_t GetDeadCounts() const;
+        float GetHitPointsRate() const;
 
         int GetColor() const;
         int GetControl() const;

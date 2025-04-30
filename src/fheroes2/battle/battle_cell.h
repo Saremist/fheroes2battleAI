@@ -157,6 +157,8 @@ namespace Battle
         }
 
         bool operator<( const Position & other ) const;
+
+        
     };
 }
 
