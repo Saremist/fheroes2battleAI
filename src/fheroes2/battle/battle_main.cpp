@@ -324,6 +324,8 @@ bool Battle::PrepareBattle( Army & army1, Army & army2, int32_t mapsindex, Resul
     return true;
 }
 
+#include "NN_ai.h"
+
 Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t mapsindex, bool showBattle, const uint32_t battleSeed, const Funds & initialFunds1,
                                           const Funds & initialFunds2, HeroBase * commander1, HeroBase * commander2, bool isHumanBattle )
 {
@@ -355,7 +357,7 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
             arena.FadeArena( clearMessageLog );
         }
 
-        if ( isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
+        if (!NNAI::isTraining && isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
             showBattle = true;
 
             if ( commander1 ) {
@@ -414,10 +416,11 @@ Battle::Result Battle::Loader( Army & army1, Army & army2, int32_t mapsindex )
     result = ExecuteBattleLoop( army1, army2, mapsindex, !Settings::Get().BattleAutoResolve(), battleSeed, initialFunds1, initialFunds2, commander1, commander2,
                                 isHumanBattle );
 
+
     // Post-Battle Phase
     FinalizeBattleResult( result, army1, army2, commander1, commander2 );
 
-    return result;
+    return result; //moved to skip post battle screen
 }
 
 uint32_t Battle::Result::AttackerResult() const

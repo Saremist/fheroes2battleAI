@@ -66,6 +66,9 @@
 #include "spell_info.h"
 #include "spell_storage.h"
 
+#include "NN_ai.h"
+#include <stdio.h>
+
 namespace
 {
     const std::vector<int32_t> cellsUnderWallsIndexes = { 7, 28, 49, 72, 95 };
@@ -615,39 +618,51 @@ void AI::BattlePlanner::battleBegins()
 
 
 
+void PrintUnitInfo( const Battle::Unit & unit ) // TODO Move to NN_ai_utilities.cpp
+{
+    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Count: " << unit.GetCount()
+              << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << ", Shooting: " << unit.GetShots() << ", speed: " << unit.GetSpeed()
+              << " HitPoints: " << unit.GetHitPointsLeft() << std::endl;
+}
+
+
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
 {
+    // Current unit can be under the influence of the Hypnotize spell
+    const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+
+    std::cout << "currentUnit:" << std::endl;
+    PrintUnitInfo( currentUnit );
+    std::cout << std::endl;
+
+    std::cout << "enemies:" << std::endl;
+    for ( const Battle::Unit * enemy : enemies ) {
+        assert( enemy != nullptr );
+        PrintUnitInfo( *enemy );
+    }
+    std::cout << std::endl;
+
+    std::cout << "allies:" << std::endl;
+    for ( const Battle::Unit * allie : allies ) {
+        assert( allie != nullptr );
+        PrintUnitInfo( *allie );
+    }
+    std::cout << std::endl;
+
+    const Battle::Actions plannedActions = planUnitTurn( arena, currentUnit );
+        
+    std::cout << plannedActions << std::endl;
+
+    if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
+        std::cout << NNAI::planUnitTurn( arena, currentUnit ) << std::endl;
+    }
+
     // Return immediately if our limit of turns has been exceeded
     if ( isLimitOfTurnsExceeded( arena, actions ) ) {
         return;
     }
 
-    const Battle::Actions plannedActions = planUnitTurn( arena, currentUnit );
-
-    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << plannedActions.size() << " actions)" << std::endl;
-
-    int index = 0;
-    for ( const auto & action : plannedActions ) {
-        std::cout << "Action " << index++ << ": ";
-
-        if ( action.empty() ) {
-            std::cout << "EMPTY ACTION" << std::endl;
-            continue;
-        }
-
-        // First element in the vector probably represents the CommandType
-        int commandType = action[0];
-        std::cout << "Type = " << commandType << ", Params = [ ";
-
-        // Print all parameters in the vector
-        for ( size_t i = 1; i < action.size(); ++i ) {
-            std::cout << action[i];
-            if ( i < action.size() - 1 ) {
-                std::cout << ", ";
-            }
-        }
-        std::cout << " ]" << std::endl;
-    }
 
     actions.insert( actions.end(), plannedActions.begin(), plannedActions.end() );
 }
@@ -1550,14 +1565,6 @@ Battle::Actions AI::BattlePlanner::archerDecision( Battle::Arena & arena, const 
     return actions;
 }
 
-
-#include <stdio.h>
-
-void PrintUnitInfo( const Battle::Unit & unit )
-{
-    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:"<< unit.GetID() << ", Count: " << unit.GetCount() << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << std::endl;
-}
-
 AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena, const Battle::Unit & currentUnit ) const
 {
     BattleTargetPair target;
@@ -1567,25 +1574,6 @@ AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena,
     // Current unit can be under the influence of the Hypnotize spell
     const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
     const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-
-    std::cout << "enmeies:" << std::endl; 
-    for ( const Battle::Unit * enemy : enemies ) {
-        assert( enemy != nullptr );
-        PrintUnitInfo( *enemy );
-    }
-    std::cout << std::endl;
-
-    std::cout << "allies:" << std::endl;
-    for ( const Battle::Unit * allie : allies ) {
-        assert( allie != nullptr );
-        PrintUnitInfo( *allie );
-    }
-    std::cout << std::endl;
-
-    std::cout << "currentUnit:" << std::endl;
-    PrintUnitInfo( currentUnit );
-    std::cout << std::endl;
-
 
     // 1. Choose the best target within reach, if any
     {

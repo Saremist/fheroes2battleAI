@@ -93,10 +93,6 @@ Battle::Only::Only()
 {
     armyInfo[1].armyId = 1;
 
-    for ( auto & info : armyInfo ) {
-        info.monster.GetTroop( 0 )->Set( Monster::PEASANT, 100 );
-        info.monsterBackup.Assign( info.monster );
-    }
 
     armyInfo[0].controlType = CONTROL_HUMAN;
     armyInfo[0].player.SetControl( armyInfo[0].controlType );
@@ -105,12 +101,16 @@ Battle::Only::Only()
     armyInfo[1].controlType = CONTROL_AI;
     armyInfo[1].player.SetControl( armyInfo[1].controlType );
     armyInfo[1].player.SetColor( playerColor[1] );
+    
+    for ( auto & info : armyInfo ) {
+        info.monster.GetTroop( 0 )->Set( Monster::PEASANT, 100 );
+        info.monsterBackup.Assign( info.monster );
+    }
 }
 
 #include <random> 
-int getRandomHero()
+int getRandomHeroId()
 {
-    // Seed the random number generator
     static bool seeded = false;
     if ( !seeded ) {
         srand( (unsigned)time( NULL ) );
@@ -118,15 +118,67 @@ int getRandomHero()
     }
 
     // Calculate the range
-    int range = Heroes::HEROES_COUNT - 2 - 1; // Subtract 1 because range is inclusive
+    int range = Heroes::HEROES_COUNT - 2; // Subtract 2 to get accual hero count
     int offset = 1;
 
     // Generate a random number within the range
-    int randomHero = offset + ( rand() % ( range + 1 ) ); // Add 1 to include the upper limit
+    int randomHeroId = offset + ( rand() % ( range) ); // Add 1 to include the upper limit
 
-    return randomHero;
+    return randomHeroId;
 }
 
+int getRandomMonterId()
+{
+    static bool seeded = false;
+    if ( !seeded ) {
+        srand( (unsigned)time( NULL ) );
+        seeded = true;
+    }
+
+    // Calculate the range
+    int range = Monster::MONSTER_COUNT - 6; // Subtract 6 to get accual monster count
+    int offset = 1;
+
+    // Generate a random number within the range
+    int randomMonsterId = offset + ( rand() % ( range ) ); // Add 1 to exclude UNNKNOWN
+
+    return randomMonsterId;
+}
+
+void FillRandomTrainingTroops( Heroes * hero )
+{
+    if ( !hero )
+        return;
+
+    auto & army = hero->GetArmy();
+    std::random_device rd;
+    std::mt19937 gen( rd() );
+    std::discrete_distribution<> dist( { 1, 3, 6, 3, 1 } ); // Centered around 3
+    int numTroops = dist( gen ) + 1; // Gives 1 to 5, centered on 3
+
+    for ( int i = 0; i < 5; ++i ) {
+        auto troop = army.GetTroop( i );
+        if ( !troop )
+            continue;
+
+        if ( i < numTroops ) {
+            int monsterId = getRandomMonterId();
+            troop->SetMonster( monsterId );
+            Monster::LevelType level = troop->GetRandomUnitLevel();
+            troop->SetCount( troop->GetRNDSize() );
+
+            // std::cout << "Position: " << i << ", Monster ID: " << monsterId << ", Level: " << static_cast<int>( level ) << ", Count: " << troop->GetCount() <<
+            // std::endl; // raw output for debugging
+        }
+        else {
+            troop->SetMonster( 0 );
+            troop->SetCount( 0 );
+        }
+    }
+    std::cout << std::endl;
+}
+
+#include "NN_ai.h"
 
 bool Battle::Only::setup( const bool allowBackup, bool & reset )
 {
@@ -169,13 +221,13 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
         }
     }
 
-    if ( !_backupCompleted || !allowBackup ) {
-        armyInfo[0].hero = world.GetHeroes( getRandomHero() );
+    //if ( !_backupCompleted || !allowBackup ) {
+        armyInfo[0].hero = world.GetHeroes( getRandomHeroId() );
         armyInfo[0].isHeroPresent = true;
 
-        armyInfo[1].hero = world.GetHeroes( getRandomHero());
+        armyInfo[1].hero = world.GetHeroes( getRandomHeroId());
         armyInfo[1].isHeroPresent = true;
-    }
+    //}
 
     const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
     fheroes2::Copy( background, 0, 0, display, cur_pt.x, cur_pt.y, background.width(), background.height() );
@@ -232,9 +284,10 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
 
     display.render();
 
-    bool result = false;
+    //bool result = false;
+    bool result = NNAI::isTraining;
 
-    while ( le.HandleEvents() ) {
+    while ( !NNAI::isTraining && le.HandleEvents() ) { // will skip input and instantly start a game if training mode is enabled
         bool updateSpellPoints = false;
         bool needRender = false;
         bool needRedrawOpponentsStats = false;
@@ -870,6 +923,18 @@ void Battle::Only::updateArmyUI( ArmyUI & ui, Heroes * hero, const fheroes2::Poi
     ui.artifact->setInBetweenItemsOffset( { 2, 2 } );
     ui.artifact->SetContent( hero->GetBagArtifacts() );
     ui.artifact->setRenderingOffset( { offset.x + artifactOffsetX[armyId], offset.y + 347 } );
+
+    //Seting randomized monsters for training
+    FillRandomTrainingTroops( hero );
+    //hero->GetArmy().GetTroop( 0 )->SetMonster( getRandomMonterId() );
+    //std::cout <<(int) hero->GetArmy().GetTroop( 0 )->GetRandomUnitLevel()<< std::endl;
+    ////GetRNDSize
+    //hero->GetArmy().GetTroop( 0 )->SetCount( hero->GetArmy().GetTroop( 0 )->GetRNDSize() );
+    //std::cout << (int)hero->GetArmy().GetTroop( 0 )->GetCount() << std::endl;
+
+
+
+
 
     ui.army = std::make_unique<ArmyBar>( &hero->GetArmy(), true, false, true );
     ui.army->setTableSize( { 5, 1 } );

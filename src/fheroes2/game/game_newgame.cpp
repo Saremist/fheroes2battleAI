@@ -186,7 +186,7 @@ fheroes2::GameMode Game::NewHotSeat()
             break;
         }
     }
-    return fheroes2::GameMode::MAIN_MENU;
+    return fheroes2::GameMode::NEW_BATTLE_ONLY;
 }
 
 fheroes2::GameMode Game::CampaignSelection()

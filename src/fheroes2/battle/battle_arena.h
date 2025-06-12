@@ -41,6 +41,8 @@
 #include "spell.h"
 #include "spell_storage.h"
 
+#include <ostream>
+
 class Army;
 class Artifact;
 class Castle;
@@ -363,6 +365,7 @@ namespace Battle
     };
 
     Arena * GetArena();
+
 }
 
 #endif

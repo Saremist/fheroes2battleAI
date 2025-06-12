@@ -3303,6 +3303,7 @@ void Battle::Interface::MouseLeftClickBoardAction( const int themes, const Cell 
             }
 
             const int dir = GetDirectionFromCursorSword( themes );
+            std::cout << "Attack direction: " << dir << std::endl;
 
             if ( unitOnCell && Board::isValidDirection( index, dir ) ) {
                 const int32_t move = fixupDestinationCell( *_currentUnit, Board::GetIndexDirection( index, dir ) );

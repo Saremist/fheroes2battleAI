@@ -275,7 +275,95 @@ namespace
     }
 }
 
+//#include "NN_ai.h";
+//
+//int training_main( int argc, char ** argv )
+//{
+//// SDL2main.lib converts argv to UTF-8, but this application expects ANSI, use the original argv
+//#if defined( _WIN32 )
+//    assert( argc == __argc );
+//
+//    argv = __argv;
+//#else
+//    (void)argc;
+//#endif
+//
+//    NNAI::isTraining = true;
+//
+//    try {
+//        const fheroes2::HardwareInitializer hardwareInitializer;
+//        Logging::InitLog();
+//
+//        COUT( GetCaption() )
+//
+//        Settings & conf = Settings::Get();
+//        conf.SetProgramPath( argv[0] );
+//
+//        InitConfigDir();
+//        InitDataDir();
+//        ReadConfigs();
+//
+//        std::set<fheroes2::SystemInitializationComponent> coreComponents{ fheroes2::SystemInitializationComponent::Audio,
+//                                                                          fheroes2::SystemInitializationComponent::Video };
+//
+//#if defined( TARGET_PS_VITA ) || defined( TARGET_NINTENDO_SWITCH )
+//        coreComponents.emplace( fheroes2::SystemInitializationComponent::GameController );
+//#endif
+//
+//        const fheroes2::CoreInitializer coreInitializer( coreComponents );
+//
+//        DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() )
+//
+//        const DisplayInitializer displayInitializer;
+//        const DataInitializer dataInitializer;
+//
+//        ListFiles midiSoundFonts;
+//
+//        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
+//        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
+//
+//#ifdef WITH_DEBUG
+//        for ( const std::string & file : midiSoundFonts ) {
+//            DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
+//        }
+//#endif
+//        const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
+//        
+//        // Load palette.
+//        fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
+//        fheroes2::Display::instance().changePalette( nullptr, true );
+//
+//        // init game data
+//        Game::Init();
+//
+//        conf.setGameLanguage( conf.getGameLanguage() );
+//
+//        conf.setBattleAutoResolve( true ); // Force auto battle resolve for training mode.
+//
+//        try {
+//            const CursorRestorer cursorRestorer( true, Cursor::POINTER );
+//
+//            Game::trainingGameLoop( false, isProbablyDemoVersion() );
+//        }
+//        catch ( const fheroes2::InvalidDataResources & ex ) {
+//            ERROR_LOG( ex.what() )
+//            displayMissingResourceWindow();
+//            return EXIT_FAILURE;
+//        }
+//    }
+//    catch ( const std::exception & ex ) {
+//        ERROR_LOG( "Exception '" << ex.what() << "' occurred during application runtime." )
+//        return EXIT_FAILURE;
+//    }
+//    catch ( ... ) {
+//        ERROR_LOG( "An unknown exception occurred during application runtime." )
+//        return EXIT_FAILURE;
+//    }
+//
+//    return EXIT_SUCCESS;
+//}
 
+#include "NN_ai.h";
 
 int training_main( int argc, char ** argv )
 {
@@ -287,8 +375,7 @@ int training_main( int argc, char ** argv )
 #else
     (void)argc;
 #endif
-
-    try {
+       try {
         const fheroes2::HardwareInitializer hardwareInitializer;
         Logging::InitLog();
 
@@ -318,14 +405,16 @@ int training_main( int argc, char ** argv )
         ListFiles midiSoundFonts;
 
         midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
+        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
 
 #ifdef WITH_DEBUG
         for ( const std::string & file : midiSoundFonts ) {
             DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
         }
 #endif
+
         const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
-        
+
         // Load palette.
         fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
         fheroes2::Display::instance().changePalette( nullptr, true );
@@ -334,12 +423,11 @@ int training_main( int argc, char ** argv )
         Game::Init();
 
         conf.setGameLanguage( conf.getGameLanguage() );
-        conf.setBattleAutoResolve( true ); // Force auto battle resolve for training mode.
 
         try {
             const CursorRestorer cursorRestorer( true, Cursor::POINTER );
 
-            Game::trainingGameLoop( false, isProbablyDemoVersion() );
+            Game::trainingGameLoop( false, isProbablyDemoVersion(), NNAI::TrainingLoopsCount );
         }
         catch ( const fheroes2::InvalidDataResources & ex ) {
             ERROR_LOG( ex.what() )
@@ -358,7 +446,6 @@ int training_main( int argc, char ** argv )
 
     return EXIT_SUCCESS;
 }
-
 
 int default_main( int argc, char ** argv )
 {
@@ -429,7 +516,7 @@ int default_main( int argc, char ** argv )
         }
 
         try {
-            const CursorRestorer cursorRestorer( true, Cursor::POINTER );
+            const CursorRestorer cursorRestorer(true, Cursor::POINTER );
 
             Game::mainGameLoop( conf.isFirstGameRun(), isProbablyDemoVersion() );
         }
@@ -451,7 +538,6 @@ int default_main( int argc, char ** argv )
     return EXIT_SUCCESS;
 }
 
-
 #include <NN_ai.h>
 #include <ostream>
 #include <torch/torch.h>
@@ -459,36 +545,11 @@ int default_main( int argc, char ** argv )
 
 int main( int argc, char ** argv )
 {
-        // Define the model path
-        const std::string model_path = "battle_lstm.pt";
-    
-        // Check if the model file exists
-        if ( !std::filesystem::exists( model_path ) ) {
-            // Create and save the model if it does not exist
-            NNAI::createAndSaveModel( model_path );
-        }
-    
-        torch::Device device( torch::kCPU );
-    
-        // Load the LSTM model
-        static NNAI::BattleLSTM model( 10, 128, 5, 1 ); // Adjust based on your model parameters
-        model -> to( device );
-        static bool model_loaded = false;
-        if ( !model_loaded ) {
-            try {
-                torch::load( model, model_path );
-                model_loaded = true;
-            }
-            catch ( const std::exception & e ) {
-                std::cerr << "Error loading the model: " << e.what() << std::endl;
-                return -1;
-            }
-        }
-    
-        // Prepare the input for the model
-        torch::Tensor input = torch::rand( { 1, 1, 10 } ); // Adjust based on your input features
+    // Initialize the neural network models
+    NNAI::loadModel( NNAI::g_model1, "model1.pt" );
+    NNAI::loadModel( NNAI::g_model2, "model2.pt" );
+    if ( NNAI::isTraining ) {
 
-    if ( true ) {
         return training_main( argc, argv );
     }
 

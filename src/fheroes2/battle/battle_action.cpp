@@ -1694,4 +1694,36 @@ void Battle::Arena::ApplyActionSpellMirrorImage( Command & cmd )
             _interface->setStatus( _( "Spell failed!" ), true );
         }
     }
+
+}
+
+#include <ostream>
+
+// Print a single action (std::vector<int>)
+inline std::ostream & operator<<( std::ostream & os, const std::vector<int> & action )
+{
+    if ( action.empty() ) {
+        os << "EMPTY ACTION";
+        return os;
+    }
+    int commandType = action[0];
+    os << "Type = " << commandType << ", Params = [ ";
+    for ( size_t i = 1; i < action.size(); ++i ) {
+        os << action[i];
+        if ( i < action.size() - 1 )
+            os << ", ";
+    }
+    os << " ]";
+    return os;
+}
+
+// Print a list of actions (std::vector<std::vector<int>>)
+inline std::ostream & operator<<( std::ostream & os, const std::vector<std::vector<int>> & actions )
+{
+    os << "Actions (" << actions.size() << "):" << std::endl;
+    int index = 0;
+    for ( const auto & action : actions ) {
+        os << "Action " << index++ << ": " << action << std::endl;
+    }
+    return os;
 }

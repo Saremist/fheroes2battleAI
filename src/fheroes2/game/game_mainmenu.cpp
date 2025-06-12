@@ -259,13 +259,14 @@ std::string gameModeToString( fheroes2::GameMode mode ) // used to debug gamemod
     return it != modeToString.end() ? it->second : "UNKNOWN_MODE";
 }
 
-void Game::trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion )
+void Game::trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion, int training_loops )
 {
     fheroes2::GameMode result = fheroes2::GameMode::NEW_BATTLE_ONLY;
 
     bool exit = false;
 
-    while ( !exit ) {
+    while ( !exit && training_loops >= 0 ) {
+        training_loops--; // Will loop n times, then exit
         std::cout << gameModeToString( result ) << std::endl;
         switch ( result ) {
         case fheroes2::GameMode::QUIT_GAME:

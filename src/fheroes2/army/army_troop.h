@@ -45,6 +45,7 @@ public:
     void Set( const Troop & troop );
     void Set( const Monster & mons, const uint32_t count );
     void SetMonster( const Monster & mons );
+    void SetMonster( int monsID );
     void SetCount( const uint32_t count );
     void Reset();
 

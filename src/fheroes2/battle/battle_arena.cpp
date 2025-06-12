@@ -662,7 +662,7 @@ void Battle::Arena::Turns()
         result_game.exp2 = _army1->GetDeadHitPoints();
         result_game.AIScore1 = _army2->GetHitPointsRate();
         result_game.AIScore2 = _army1->GetHitPointsRate();
-        result_game.AIScoreBalance = result_game.AIScore1 - result_game.AIScore2;
+        result_game.AIScoreBalance = result_game.AIScore2 - result_game.AIScore1;
 
         const HeroBase * army1Commander = _army1->GetCommander();
         const HeroBase * army2Commander = _army2->GetCommander();
@@ -1474,3 +1474,4 @@ bool Battle::Arena::CanToggleAutoBattle() const
 
     return !( GetCurrentForce().GetControl() & CONTROL_AI );
 }
+

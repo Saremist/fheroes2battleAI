@@ -189,6 +189,8 @@ namespace
     }
 }
 
+#include "nn_ai.h"
+
 fheroes2::GameMode Game::StartBattleOnly()
 {
     static Battle::Only battleOnlySetup;
@@ -212,7 +214,9 @@ fheroes2::GameMode Game::StartBattleOnly()
         break;
     }
 
-    return fheroes2::GameMode::MAIN_MENU;
+    return ( NNAI::isTraining ? fheroes2::GameMode::NEW_BATTLE_ONLY : fheroes2::GameMode::MAIN_MENU );
+
+    //return fheroes2::GameMode::MAIN_MENU;
 }
 
 fheroes2::GameMode Game::StartGame()

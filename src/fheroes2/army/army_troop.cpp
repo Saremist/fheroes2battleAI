@@ -73,6 +73,13 @@ void Troop::SetMonster( const Monster & mons )
     id = mons.GetID();
 }
 
+void Troop::SetMonster( int monsID )
+{
+    id = monsID;
+}
+
+
+
 void Troop::SetCount( const uint32_t count )
 {
     _count = count;
