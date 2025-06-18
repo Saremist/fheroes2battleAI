@@ -275,99 +275,19 @@ namespace
     }
 }
 
-//#include "NN_ai.h";
-//
-//int training_main( int argc, char ** argv )
-//{
-//// SDL2main.lib converts argv to UTF-8, but this application expects ANSI, use the original argv
-//#if defined( _WIN32 )
-//    assert( argc == __argc );
-//
-//    argv = __argv;
-//#else
-//    (void)argc;
-//#endif
-//
-//    NNAI::isTraining = true;
-//
-//    try {
-//        const fheroes2::HardwareInitializer hardwareInitializer;
-//        Logging::InitLog();
-//
-//        COUT( GetCaption() )
-//
-//        Settings & conf = Settings::Get();
-//        conf.SetProgramPath( argv[0] );
-//
-//        InitConfigDir();
-//        InitDataDir();
-//        ReadConfigs();
-//
-//        std::set<fheroes2::SystemInitializationComponent> coreComponents{ fheroes2::SystemInitializationComponent::Audio,
-//                                                                          fheroes2::SystemInitializationComponent::Video };
-//
-//#if defined( TARGET_PS_VITA ) || defined( TARGET_NINTENDO_SWITCH )
-//        coreComponents.emplace( fheroes2::SystemInitializationComponent::GameController );
-//#endif
-//
-//        const fheroes2::CoreInitializer coreInitializer( coreComponents );
-//
-//        DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() )
-//
-//        const DisplayInitializer displayInitializer;
-//        const DataInitializer dataInitializer;
-//
-//        ListFiles midiSoundFonts;
-//
-//        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
-//        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
-//
-//#ifdef WITH_DEBUG
-//        for ( const std::string & file : midiSoundFonts ) {
-//            DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
-//        }
-//#endif
-//        const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
-//        
-//        // Load palette.
-//        fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
-//        fheroes2::Display::instance().changePalette( nullptr, true );
-//
-//        // init game data
-//        Game::Init();
-//
-//        conf.setGameLanguage( conf.getGameLanguage() );
-//
-//        conf.setBattleAutoResolve( true ); // Force auto battle resolve for training mode.
-//
-//        try {
-//            const CursorRestorer cursorRestorer( true, Cursor::POINTER );
-//
-//            Game::trainingGameLoop( false, isProbablyDemoVersion() );
-//        }
-//        catch ( const fheroes2::InvalidDataResources & ex ) {
-//            ERROR_LOG( ex.what() )
-//            displayMissingResourceWindow();
-//            return EXIT_FAILURE;
-//        }
-//    }
-//    catch ( const std::exception & ex ) {
-//        ERROR_LOG( "Exception '" << ex.what() << "' occurred during application runtime." )
-//        return EXIT_FAILURE;
-//    }
-//    catch ( ... ) {
-//        ERROR_LOG( "An unknown exception occurred during application runtime." )
-//        return EXIT_FAILURE;
-//    }
-//
-//    return EXIT_SUCCESS;
-//}
-
 #include "NN_ai.h";
+/*
+Main Training loop for the game.
+It chcages default game loop to run training games.
+This will instatnly loop through the game and collect data for training n times specified by NNAI::TrainingLoopsCount.
+This is used to train the neural network models for the game.
+It is not intended to be used by the end user.
 
+Modified from the original fheroes2::Game::mainGameLoop() by
+Milan Wróblewski for the purpose of Engineer thesis.
+*/
 int training_main( int argc, char ** argv )
 {
-// SDL2main.lib converts argv to UTF-8, but this application expects ANSI, use the original argv
 #if defined( _WIN32 )
     assert( argc == __argc );
 
@@ -427,7 +347,7 @@ int training_main( int argc, char ** argv )
         try {
             const CursorRestorer cursorRestorer( true, Cursor::POINTER );
 
-            Game::trainingGameLoop( false, isProbablyDemoVersion(), NNAI::TrainingLoopsCount );
+            NNAI::trainingGameLoop( false, isProbablyDemoVersion(), NNAI::TrainingLoopsCount );
         }
         catch ( const fheroes2::InvalidDataResources & ex ) {
             ERROR_LOG( ex.what() )

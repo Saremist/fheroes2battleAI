@@ -94,9 +94,18 @@ namespace NNAI
     std::tuple<int, int> apply_attack_to_coordinates( std::tuple<int, int> GridCoords, int AttackDirection );
     int coordinates_to_grid_id( int x, int y );
     int apply_attack_to_grid( int GridID, int AttackDirection );
+    void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion, int training_loops );
 }
+
+
+#include "ostream"
+#include <string>
+#include "battle_command.h"
+
 namespace Battle
 {
+    const char * CommandTypeToString( CommandType type );
+    std::ostream & operator<<( std::ostream & os, const Command & command );
     std::ostream & operator<<( std::ostream & os, const Actions & actions );
 }
 

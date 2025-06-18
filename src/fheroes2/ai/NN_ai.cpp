@@ -4,11 +4,15 @@
 #include <torch/torch.h>
 #include <filesystem>
 #include "battle.h"
+#include "battle_command.h"
 #include "battle_arena.h"
 #include "battle_army.h"
 #include <algorithm> // For std::reverse
 
 #include <tuple>
+
+#include "game.h"
+#include "ui_tool.h"
 
 namespace NNAI
 {
@@ -322,7 +326,6 @@ namespace NNAI
             break;
         }
 
-        std::cout << actions << std::endl;
         return actions;
     }
 
@@ -425,13 +428,53 @@ namespace NNAI
         
         return input;
     }
+
+
+    void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion, int training_loops )
+    {
+        fheroes2::GameMode result = fheroes2::GameMode::NEW_BATTLE_ONLY;
+
+        bool exit = false;
+
+        while ( !exit && training_loops >= 0 ) {
+            training_loops--; // Will loop n times, then exit
+            switch ( result ) {
+            case fheroes2::GameMode::QUIT_GAME:
+                exit = true;
+                break;
+            case fheroes2::GameMode::MAIN_MENU:
+                // result = Game::NewBattleOnly(); //loop back to battle only if trying to leave
+                result = Game::MainMenu( false );
+                break;
+            case fheroes2::GameMode::NEW_GAME:
+                result = Game::NewBattleOnly(); // new game sets up battle only
+                break;
+            case fheroes2::GameMode::NEW_BATTLE_ONLY:
+                result = Game::NewBattleOnly();
+                break;
+            case fheroes2::GameMode::NEW_MULTI:
+                result = Game::NewHotSeat();
+                break;
+            default:
+                // If this assertion blows up then you are entering an infinite loop!
+                // Add the logic for the newly added entry.
+                assert( 0 );
+                exit = true;
+                break;
+            }
+        }
+
+        // We are quitting the game, so fade-out the screen.
+        fheroes2::fadeOutDisplay();
+    }
+
 }
 #include "ostream"
 #include <string>
 
 namespace Battle
 {
-    inline const char * CommandTypeToString( CommandType type )
+    const char * CommandTypeToString( CommandType type )
     {
         switch ( type ) {
         case CommandType::MOVE:
@@ -461,17 +504,7 @@ namespace Battle
         }
     }
 
-    std::ostream & operator<<( std::ostream & os, const Actions & actions )
-    {
-        os << "Actions [\n";
-        for ( const Command & cmd : actions ) {
-            os << "  " << cmd << "\n";
-        }
-        os << "]";
-        return os;
-    }
-
-    inline std::ostream & operator<<( std::ostream & os, const Command & command )
+    std::ostream & operator<<( std::ostream & os, const Command & command )
     {
         os << "Command(" << CommandTypeToString( command.GetType() ) << ") [";
 
@@ -486,4 +519,15 @@ namespace Battle
         os << "]";
         return os;
     }
+
+    std::ostream & operator<<( std::ostream & os, const Actions & actions )
+    {
+        os << "Actions [\n";
+        for ( const Command & cmd : actions ) {
+            os << "  " << cmd << "\n";
+        }
+        os << "]";
+        return os;
+    }
+
 }
