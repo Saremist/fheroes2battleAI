@@ -1,3 +1,8 @@
+# What is this project?
+This is a fork of fheroes2 (see below) exploring possibilyty of using reinforcment learning with copetative-self play as an alternative to manually built heuristics of enemy AI. 
+
+For compiling the code please follow 
+
 # fheroes2
 
 **fheroes2** is a recreation of the Heroes of Might and Magic II game engine.

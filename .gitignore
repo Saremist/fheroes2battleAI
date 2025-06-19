@@ -99,3 +99,6 @@ android/app/src/main/assets/files/
 
 #whole libtorch direcory
 libtorch
+
+#obsidian files
+.obsidian
