@@ -9165,14 +9165,7 @@
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)packages\sdl2\lib\$(PlatformTarget);$(ProjectDir)libtorch\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>asmjit.lib;c10.lib;c10_cuda.lib;caffe2_nvrtc.lib;cpuinfo.lib;dnnl.lib;fbgemm.lib;fmtd.lib;kineto.lib;libprotobufd.lib;libprotocd.lib;pthreadpool.lib;torch.lib;torch_cpu.lib;torch_cuda.lib;XNNPACK.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Command>if not exist "$(OutDir)*.dll" (
-xcopy /Y /Q "$(MSBuildThisFileDirectory)VisualStudio\packages\sdl2\lib\$(PlatformTarget)\*.dll" "$(OutDir)"
-xcopy /Y /Q "$(MSBuildThisFileDirectory)VisualStudio\packages\sdl2\lib\$(PlatformTarget)\*.pdb" "$(OutDir)"
-xcopy $(ProjectDir)libtorch\lib\*.dll "$(OutDir)"\ /C /Y /Q
-$(command)
-)</Command>
-    </PostBuildEvent>
+    <PostBuildEvent />
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

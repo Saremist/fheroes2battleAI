@@ -13,23 +13,26 @@
       <PreprocessorDefinitions Condition="'$(FHEROES2_BUILD_NUMBER)'!=''">BUILD_VERSION=$(FHEROES2_BUILD_NUMBER);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>if exist data (
-    if not exist "$(OutDir)data" (
-        xcopy /Y /S /Q data "$(OutDir)data\"
-    )
-)
+      <Command>
+		  if exist data (
+		  if not exist "$(OutDir)data" (
+		  xcopy /Y /S /Q data "$(OutDir)data\"
+		  )
+		  )
 
-if exist maps (
-    if not exist "$(OutDir)maps" (
-        xcopy /Y /S /Q maps "$(OutDir)maps\"
-    )
-)
+		  if exist maps (
+		  if not exist "$(OutDir)maps" (
+		  xcopy /Y /S /Q maps "$(OutDir)maps\"
+		  )
+		  )
 
-xcopy /Y /S /Q files\data "$(OutDir)files\data\"
-xcopy /Y /Q files\lang\*.mo "$(OutDir)files\lang\"
-xcopy /Y /S /Q files\soundfonts "$(OutDir)files\soundfonts\"
+		  xcopy /Y /S /Q files\data "$(OutDir)files\data\"
+		  xcopy /Y /Q files\lang\*.mo "$(OutDir)files\lang\"
+		  xcopy /Y /S /Q files\soundfonts "$(OutDir)files\soundfonts\"
+		  xcopy $(ProjectDir)libtorch\lib\*.dll "$(OutDir)"\ /C /Y /Q
 
-%(Command)</Command>
+
+		  %(Command)</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>
