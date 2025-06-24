@@ -97,6 +97,7 @@ namespace NNAI
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion, int training_loops );
 }
 
+void PrintUnitInfo( const Battle::Unit & unit );
 
 #include "ostream"
 #include <string>

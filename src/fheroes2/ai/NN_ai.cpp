@@ -5,6 +5,7 @@
 #include <filesystem>
 #include "battle.h"
 #include "battle_command.h"
+#include "battle_action.h"
 #include "battle_arena.h"
 #include "battle_army.h"
 #include <algorithm> // For std::reverse
@@ -18,8 +19,8 @@ namespace NNAI
 {
     std::shared_ptr<NNAI::BattleLSTM> g_model1 = nullptr;
     std::shared_ptr<NNAI::BattleLSTM> g_model2 = nullptr;
-    const bool isTraining = true; // Defines if post battle dialog will open
-    const int TrainingLoopsCount = 1;
+    const bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
+    const int TrainingLoopsCount = 10;
 
     torch::Device device( torch::kCPU );
 
@@ -274,8 +275,8 @@ namespace NNAI
         attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
         int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
-        int targetUnitId = -1; // TODO Get the target unit ID at the specified position
-        auto cell = arena.GetBoard()->GetCell( positionNum );
+        int targetUnitId = -1;
+        auto cell = arena.GetBoard()->GetCell( attackTargetPositon );
         if ( cell ) {
             auto unit = cell->GetUnit();
             if ( unit ) {
@@ -283,7 +284,8 @@ namespace NNAI
             }
         }
 
-        actionType = 1;
+        actionType = 0;
+        positionNum = 47;
 
         std::cout << std::endl
                   << "Action Type: "<< actionType
@@ -469,6 +471,14 @@ namespace NNAI
     }
 
 }
+
+void PrintUnitInfo( const Battle::Unit & unit ) 
+{
+    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Count: " << unit.GetCount()
+              << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << ", Shooting: " << unit.GetShots() << ", speed: " << unit.GetSpeed()
+              << " HitPoints: " << unit.GetHitPointsLeft() << std::endl;
+}
+
 #include "ostream"
 #include <string>
 

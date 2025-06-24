@@ -618,12 +618,7 @@ void AI::BattlePlanner::battleBegins()
 
 
 
-void PrintUnitInfo( const Battle::Unit & unit ) // TODO Move to NN_ai_utilities.cpp
-{
-    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Count: " << unit.GetCount()
-              << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << ", Shooting: " << unit.GetShots() << ", speed: " << unit.GetSpeed()
-              << " HitPoints: " << unit.GetHitPointsLeft() << std::endl;
-}
+
 
 
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
@@ -649,14 +644,16 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         PrintUnitInfo( *allie );
     }
     std::cout << std::endl;
-
-    const Battle::Actions plannedActions = planUnitTurn( arena, currentUnit );
-        
-    std::cout << plannedActions << std::endl;
+    Battle::Actions plannedActions;
 
     if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
-        std::cout << NNAI::planUnitTurn( arena, currentUnit ) << std::endl;
+        plannedActions = NNAI::planUnitTurn( arena, currentUnit ); 
     }
+    else {
+        plannedActions = planUnitTurn( arena, currentUnit ); 
+    }
+
+    std::cout << plannedActions << std::endl;
 
     // Return immediately if our limit of turns has been exceeded
     if ( isLimitOfTurnsExceeded( arena, actions ) ) {
