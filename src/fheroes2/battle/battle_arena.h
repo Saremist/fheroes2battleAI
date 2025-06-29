@@ -296,6 +296,9 @@ namespace Battle
         void ApplyActionSpellEarthquake( const Command & cmd );
         void ApplyActionSpellDefaults( Command & cmd, const Spell & spell );
 
+        // Check if the given unit is able to perform an action on the current turn. ~Milan Wróblewski
+        bool CheckAttackParameters( const Unit * attacker, const Unit * defender, int32_t dst, int32_t tgt, int dir );
+
         // Moves the given unit to a position where the index of the head cell is equal to 'dst'. If 'dst' is -1,
         // then this method does nothing. Otherwise, it's the caller's responsibility to make sure that this position
         // is reachable for the given unit on the current turn before calling this method.

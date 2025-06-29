@@ -505,9 +505,10 @@ void Battle::Arena::ApplyActionSpellCast( Command & cmd )
     _usedSpells.Append( spell );
 }
 
-void Battle::Arena::ApplyActionAttack( Command & cmd )
+namespace Battle
 {
-    const auto checkParameters = []( const Unit * attacker, const Unit * defender, const int32_t dst, int32_t tgt, int dir ) {
+    bool CheckAttackParameters( const Unit * attacker, const Unit * defender, int32_t dst, int32_t tgt, int dir )
+    {
         if ( attacker == nullptr || !attacker->isValid() ) {
             return false;
         }
@@ -592,8 +593,11 @@ void Battle::Arena::ApplyActionAttack( Command & cmd )
         }
 
         return true;
-    };
+    }
+} // namespace Battle
 
+void Battle::Arena::ApplyActionAttack( Command & cmd )
+{
     const uint32_t attackerUID = cmd.GetNextValue();
     const uint32_t defenderUID = cmd.GetNextValue();
     const int32_t dst = cmd.GetNextValue();
@@ -603,7 +607,7 @@ void Battle::Arena::ApplyActionAttack( Command & cmd )
     Unit * attacker = GetTroopUID( attackerUID );
     Unit * defender = GetTroopUID( defenderUID );
 
-    if ( !checkParameters( attacker, defender, dst, tgt, dir ) ) {
+    if ( !Battle::CheckAttackParameters( attacker, defender, dst, tgt, dir ) ) { // Swap to fuction by ~Milan Wroblewski
         ERROR_LOG( "Invalid parameters: "
                    << "attacker uid: " << GetHexString( attackerUID ) << ", defender uid: " << GetHexString( defenderUID ) << ", dst: " << dst << ", tgt: " << tgt
                    << ", dir: " << dir )
