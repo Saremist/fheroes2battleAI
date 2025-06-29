@@ -5,7 +5,7 @@
 #include <filesystem>
 #include "battle.h"
 #include "battle_command.h"
-#include "battle_action.h"
+//#include "battle_action.h"
 #include "battle_arena.h"
 #include "battle_army.h"
 #include <algorithm> // For std::reverse
@@ -19,7 +19,7 @@ namespace NNAI
 {
     std::shared_ptr<NNAI::BattleLSTM> g_model1 = nullptr;
     std::shared_ptr<NNAI::BattleLSTM> g_model2 = nullptr;
-    const bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
+    const bool isTraining = false; // Defines if post battle dialog will open or the training loop will continue
     const int TrainingLoopsCount = 10;
 
     torch::Device device( torch::kCPU );
@@ -151,96 +151,98 @@ namespace NNAI
     }
 
 
-    std::tuple<int, int> grid_id_to_coordinates(int GridID)
-    {
-        if ( GridID < 1 || GridID > 99 ) {
-            std::cerr << "GridID out of bounds!" << std::endl;
-            return std::make_tuple( -1, -1 ); // Invalid coordinates
-        }
-        int x = (GridID-1) % 11;
-        int y = (GridID-1) / 11;
-        return std::make_tuple( x, y );
-    }
+    //std::tuple<int, int> grid_id_to_coordinates(int GridID)
+    //{
+    //    if ( GridID < 1 || GridID > 99 ) {
+    //        std::cerr << "GridID out of bounds!" << std::endl;
+    //        return std::make_tuple( -1, -1 ); // Invalid coordinates
+    //    }
 
-    std::tuple<int, int> apply_attack_to_coordinates(std::tuple<int, int> GridCoords, int AttackDirection) 
-    {
-        int x = std::get<0>( GridCoords );
-        int y = std::get<1>( GridCoords );
-        if ( y % 2 == 0 ) { // Odd row
-            switch ( AttackDirection ) {
-            case 1: // Down-Right
-                x += 1;
-                y += 1;
-                break;
-            case 2: // Down-Left
-                y += 1;
-                break;
-            case 4: // LEFT
-                x -= 1;
-                break;
-            case 8: // UP-Left
-                y -= 1;
-                break;
-            case 16: // UP-Right
-                x += 1;
-                y -= 1;
-                break;
-            case 32: // Right
-                x += 1;
-                break;
-            default:
-                std::cerr << "Invalid attack direction!" << std::endl;
-            }
-        }
-        else { // Even row
-        switch ( AttackDirection ) {
-        case 1: //Down-Right
-            y += 1;
-            break;
-        case 2: // Down-Left
-            x -= 1;
-            y += 1;
-            break;
-        case 4: // LEFT
-            x -= 1;
-            break;
-        case 8: // UP-Left
-            x -= 1;
-            y -= 1;
-            break;
-        case 16: // UP-Right
-            y -= 1;
-            break;
-        case 32: // Right
-            x += 1;
-            break;
-        default:
-            std::cerr << "Invalid attack direction!" << std::endl;
-        }
-        return std::make_tuple( x, y );
-        }
-        if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
-            std::cerr << "Coordinates out of bounds after attack!" << std::endl;
-            return std::make_tuple( -1, -1 ); // Invalid coordinates
-        }
-        return std::make_tuple( x, y );
-    }
+    //    int x = (GridID-1) % 11;
+    //    int y = (GridID-1) / 11;
+    //    return std::make_tuple( x, y );
+    //}
 
-    int coordinates_to_grid_id( int x, int y )
-    {
-        if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
-            std::cerr << "Coordinates out of bounds!" << std::endl;
-            return -1; // Invalid grid ID
-        }
-        return ( y * 11 + x + 1 ); 
-    }
+    //std::tuple<int, int> apply_attack_to_coordinates(std::tuple<int, int> GridCoords, int AttackDirection) 
+    //{
+    //    int x = std::get<0>( GridCoords );
+    //    int y = std::get<1>( GridCoords );
+    //    if ( y % 2 == 0 ) { // Odd row
+    //        switch ( AttackDirection ) {
+    //        case 1: // Down-Right
+    //            x += 1;
+    //            y += 1;
+    //            break;
+    //        case 2: // Down-Left
+    //            y += 1;
+    //            break;
+    //        case 4: // LEFT
+    //            x -= 1;
+    //            break;
+    //        case 8: // UP-Left
+    //            y -= 1;
+    //            break;
+    //        case 16: // UP-Right
+    //            x += 1;
+    //            y -= 1;
+    //            break;
+    //        case 32: // Right
+    //            x += 1;
+    //            break;
+    //        default:
+    //            std::cerr << "Invalid attack direction!" << std::endl;
+    //        }
+    //    }
+    //    else { // Even row
+    //    switch ( AttackDirection ) {
+    //    case 1: //Down-Right
+    //        y += 1;
+    //        break;
+    //    case 2: // Down-Left
+    //        x -= 1;
+    //        y += 1;
+    //        break;
+    //    case 4: // LEFT
+    //        x -= 1;
+    //        break;
+    //    case 8: // UP-Left
+    //        x -= 1;
+    //        y -= 1;
+    //        break;
+    //    case 16: // UP-Right
+    //        y -= 1;
+    //        break;
+    //    case 32: // Right
+    //        x += 1;
+    //        break;
+    //    default:
+    //        std::cerr << "Invalid attack direction!" << std::endl;
+    //    }
+    //    return std::make_tuple( x, y );
+    //    }
+    //    if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
+    //        std::cerr << "Coordinates out of bounds after attack!" << std::endl;
+    //        return std::make_tuple( -1, -1 ); // Invalid coordinates
+    //    }
+    //    return std::make_tuple( x, y );
+    //}
 
-    int apply_attack_to_grid( int GridID, int AttackDirection )
-    {
-        auto coords = grid_id_to_coordinates( GridID );
-        auto new_coords = apply_attack_to_coordinates( coords, AttackDirection );
-        return coordinates_to_grid_id( std::get<0>( new_coords ), std::get<1>( new_coords ) );
-    }
+    //int coordinates_to_grid_id( int x, int y )
+    //{
+    //    if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
+    //        std::cerr << "Coordinates out of bounds!" << std::endl;
+    //        return -1; // Invalid grid ID
+    //    }
+    //    return ( y * 11 + x + 1 ); 
+    //}
+
+    //int apply_attack_to_grid( int GridID, int AttackDirection )
+    //{
+    //    auto coords = grid_id_to_coordinates( GridID );
+    //    auto new_coords = apply_attack_to_coordinates( coords, AttackDirection );
+
+    //    return coordinates_to_grid_id( std::get<0>( new_coords ), std::get<1>( new_coords ) );
+    //}
 
     std::vector<torch::Tensor> predict( BattleLSTM & model, const torch::Tensor & input )
     {
@@ -251,11 +253,10 @@ namespace NNAI
     }
 
     // Converts a vector of action indices (from NN output) to Battle::Actions
-    Battle::Actions predict_action( const Battle::Unit & currentUnit, const Battle::Arena & arena ) // , const Battle::Arena & arena 
+    Battle::Actions predict_action( const Battle::Unit & currentUnit, Battle::Arena & arena ) // , const Battle::Arena & arena 
     {
         //BattleLSTM model = getModelByColor(currentUnit.GetColor()); //TODO
         BattleLSTM & model = *g_model1; // Placeholder for actual model retrieval logic
-        // Null pointer protection for model
         
         if ( !model) {
             std::cerr << "Error: Neural network model (g_model1) is not initialized!" << std::endl;
@@ -272,9 +273,20 @@ namespace NNAI
         int actionType = nn_output[0].argmax( 1 ).item<int>(); // Action type index from NN output (0: SKIP, 1: MOVE, 2: ATTACK, 3: SPELLCAST, 4: RETREAT, 5: SURRENDER)
         int positionNum = nn_output[1].argmax( 1 ).item<int>(); // Position index for MOVE, ATTACK, SPELLCAST
         int attack_direction = nn_output[3].argmax( 1 ).item<int>(); // Direction index for ATTACK (0-6)
+
+        
+        actionType = 1;
+        positionNum = 1;
+        attack_direction = 5;
+              
+        
         attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
-        int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
+
+
+        //int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
+        int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
+        
         int targetUnitId = -1;
         auto cell = arena.GetBoard()->GetCell( attackTargetPositon );
         if ( cell ) {
@@ -284,9 +296,16 @@ namespace NNAI
             }
         }
 
-        actionType = 0;
-        positionNum = 47;
+        if ( positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {
+            positionNum = -1; // Attack in place required format
+        }
 
+        if ( positionNum == -1 && actionType == 0 ) {
+            actionType = 5; // SKIP move to already ocupied slot
+            std::cout << "Already at " << currentUnit.GetPosition().GetHead() << ". Defaulting to SKIP." << std::endl;
+        }
+        
+        
         std::cout << std::endl
                   << "Action Type: "<< actionType
                   << ", Position Num: "<< positionNum
@@ -296,10 +315,22 @@ namespace NNAI
                   << ", Attack Target Position: " << attackTargetPositon << std::endl;
 
 
+        if (actionType == 1 
+            && !CheckAttackParameters( &currentUnit, arena.GetBoard()->GetCell(attackTargetPositon)->GetUnit(), positionNum, attackTargetPositon, attack_direction))
+        {
+            actionType = 5; // SKIP attack to illegal position ends up as SKIP
+            std::cout << "Attack to position " << attackTargetPositon << " is not available for unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
+        }               
+        else if ( actionType == 0 && !CheckMoveParameters( &currentUnit, positionNum ) ) {
+            actionType = 5; // SKIP move to illegal positon ends up as SKIP
+            std::cout << "Position " << positionNum << " is not available for unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
+        }
+                            
 
         switch ( actionType ) {
         case 0:
-            // MOVE: [CommandType, unitUID, targetCell]
+            // MOVE: [CommandType, unitUID, targetCell
+            std::cout << "Moving unit " << currentUnitUID << " to position " << positionNum << std::endl;
             actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
             break;
         case 1:
@@ -366,7 +397,7 @@ namespace NNAI
         // Get all units for both sides
         int _myColor = currentUnit.GetCurrentColor();
         
-        const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+        const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
         const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
 

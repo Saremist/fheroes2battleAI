@@ -256,6 +256,7 @@ namespace Battle
             CASTLE_BOTTOM_GATE_TOWER_POS = 62
         };
 
+
     private:
         void UnitTurn( const Units & orderHistory );
 
@@ -295,10 +296,6 @@ namespace Battle
         void ApplyActionSpellTeleport( Command & cmd );
         void ApplyActionSpellEarthquake( const Command & cmd );
         void ApplyActionSpellDefaults( Command & cmd, const Spell & spell );
-
-        // Check if the given unit is able to perform an action on the current turn. ~Milan Wróblewski
-        bool CheckAttackParameters( const Unit * attacker, const Unit * defender, int32_t dst, int32_t tgt, int dir );
-        bool CheckMoveParameters( const Unit * unit, int32_t dst );
 
         // Moves the given unit to a position where the index of the head cell is equal to 'dst'. If 'dst' is -1,
         // then this method does nothing. Otherwise, it's the caller's responsibility to make sure that this position
@@ -370,6 +367,9 @@ namespace Battle
 
     Arena * GetArena();
 
+    // Check if the given unit is able to perform an action on the current turn. ~Milan Wróblewski
+    bool CheckAttackParameters( const Unit * attacker, const Unit * defender, int32_t dst, int32_t tgt, int dir );
+    bool CheckMoveParameters( const Unit * unit, int32_t dst );
 }
 
 #endif

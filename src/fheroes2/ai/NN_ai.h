@@ -83,7 +83,7 @@ namespace NNAI
     std::vector<torch::Tensor> predict( BattleLSTM & model, const torch::Tensor & input );
     //torch::Tensor preprocessInput( const std::vector<float> & raw_data );
     torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
-    Battle::Actions predict_action(const Battle::Unit & currentUnit, const Battle::Arena & arena );
+    Battle::Actions predict_action(const Battle::Unit & currentUnit, Battle::Arena & arena );
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
 
