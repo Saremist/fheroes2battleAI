@@ -661,9 +661,10 @@ void Battle::Arena::ApplyActionAttack( Command & cmd )
     attacker->SetModes( TR_MOVED );
 }
 
-void Battle::Arena::ApplyActionMove( Command & cmd )
+namespace Battle
 {
-    const auto checkParameters = []( const Unit * unit, const int32_t dst ) {
+    bool CheckMoveParameters( const Unit * unit, int32_t dst )
+    {
         if ( unit == nullptr || !unit->isValid() ) {
             return false;
         }
@@ -677,14 +678,17 @@ void Battle::Arena::ApplyActionMove( Command & cmd )
         }
 
         return true;
-    };
+    }
+}
 
+void Battle::Arena::ApplyActionMove( Command & cmd )
+{
     const uint32_t uid = cmd.GetNextValue();
     const int32_t dst = cmd.GetNextValue();
 
     Unit * unit = GetTroopUID( uid );
 
-    if ( !checkParameters( unit, dst ) ) {
+    if ( !Battle::CheckMoveParameters( unit, dst ) ) {
         ERROR_LOG( "Invalid parameters: "
                    << "uid: " << GetHexString( uid ) << ", dst: " << dst )
 
