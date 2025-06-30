@@ -624,18 +624,11 @@ void AI::BattlePlanner::battleBegins()
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
 {
     // Current unit can be under the influence of the Hypnotize spell
-    const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
     const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
     std::cout << "currentUnit:" << std::endl;
     PrintUnitInfo( currentUnit );
-    std::cout << std::endl;
-
-    std::cout << "enemies:" << std::endl;
-    for ( const Battle::Unit * enemy : enemies ) {
-        assert( enemy != nullptr );
-        PrintUnitInfo( *enemy );
-    }
     std::cout << std::endl;
 
     std::cout << "allies:" << std::endl;
@@ -644,9 +637,16 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         PrintUnitInfo( *allie );
     }
     std::cout << std::endl;
+
+    std::cout << "enemies:" << std::endl;
+    for ( const Battle::Unit * enemy : enemies ) {
+        assert( enemy != nullptr );
+        PrintUnitInfo( *enemy );
+    }
+    std::cout << std::endl;
     Battle::Actions plannedActions;
 
-    if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
+    if ( true && NNAI::isNNControlled( currentUnit.GetColor() ) ) {
         plannedActions = NNAI::planUnitTurn( arena, currentUnit ); 
     }
     else {
