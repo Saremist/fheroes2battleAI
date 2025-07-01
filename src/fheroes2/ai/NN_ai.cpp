@@ -17,17 +17,26 @@
 
 namespace NNAI
 {
-    std::shared_ptr<NNAI::BattleLSTM> g_model1 = nullptr;
-    std::shared_ptr<NNAI::BattleLSTM> g_model2 = nullptr;
+    // Global model pointers for each color
+    std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
+    std::shared_ptr<BattleLSTM> g_model_green = nullptr;
+    std::shared_ptr<BattleLSTM> g_model_red = nullptr;
+    std::shared_ptr<BattleLSTM> g_model_yellow = nullptr;
+    std::shared_ptr<BattleLSTM> g_model_orange = nullptr;
+    std::shared_ptr<BattleLSTM> g_model_purple = nullptr;
     const bool isTraining = false; // Defines if post battle dialog will open or the training loop will continue
     const int TrainingLoopsCount = 10;
 
     torch::Device device( torch::kCPU );
 
-    void initializeGlobalModels( int64_t input_size, int64_t hidden_size, int64_t num_layers )
+    void initializeGlobalModels()
     {
-        g_model1 = std::make_shared<BattleLSTM>( input_size, hidden_size, num_layers );
-        g_model2 = std::make_shared<BattleLSTM>( input_size, hidden_size, num_layers );
+        loadModel( NNAI::g_model_blue, "model_blue.pt" );
+        loadModel( NNAI::g_model_green, "model_green.pt" );
+        loadModel( NNAI::g_model_red, "model_red.pt" );
+        loadModel( NNAI::g_model_yellow, "model_yellow.pt" );
+        loadModel( NNAI::g_model_orange, "model_orange.pt" );
+        loadModel( NNAI::g_model_purple, "model_purple.pt" );
     }
 
    void createAndSaveModel( const std::string & model_path )
@@ -138,6 +147,27 @@ namespace NNAI
            }
        }
 
+    
+     std::shared_ptr<BattleLSTM> getModelByColor( int color )
+       {
+         switch ( color ) {
+           case 0x01: // BLUE
+               return g_model_blue;
+           case 0x02: // GREEN
+               return g_model_green;
+           case 0x04: // RED
+               return g_model_red;
+           case 0x08: // YELLOW
+               return g_model_yellow;
+           case 0x10:// ORANGE
+               return g_model_orange;
+           case 0x20: // PURPLE
+               return g_model_purple;
+           default:
+               std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
+           }
+       }
+
 
     bool isNNControlled( int color )
     {
@@ -150,100 +180,6 @@ namespace NNAI
         return actions;
     }
 
-
-    //std::tuple<int, int> grid_id_to_coordinates(int GridID)
-    //{
-    //    if ( GridID < 1 || GridID > 99 ) {
-    //        std::cerr << "GridID out of bounds!" << std::endl;
-    //        return std::make_tuple( -1, -1 ); // Invalid coordinates
-    //    }
-
-    //    int x = (GridID-1) % 11;
-    //    int y = (GridID-1) / 11;
-    //    return std::make_tuple( x, y );
-    //}
-
-    //std::tuple<int, int> apply_attack_to_coordinates(std::tuple<int, int> GridCoords, int AttackDirection) 
-    //{
-    //    int x = std::get<0>( GridCoords );
-    //    int y = std::get<1>( GridCoords );
-    //    if ( y % 2 == 0 ) { // Odd row
-    //        switch ( AttackDirection ) {
-    //        case 1: // Down-Right
-    //            x += 1;
-    //            y += 1;
-    //            break;
-    //        case 2: // Down-Left
-    //            y += 1;
-    //            break;
-    //        case 4: // LEFT
-    //            x -= 1;
-    //            break;
-    //        case 8: // UP-Left
-    //            y -= 1;
-    //            break;
-    //        case 16: // UP-Right
-    //            x += 1;
-    //            y -= 1;
-    //            break;
-    //        case 32: // Right
-    //            x += 1;
-    //            break;
-    //        default:
-    //            std::cerr << "Invalid attack direction!" << std::endl;
-    //        }
-    //    }
-    //    else { // Even row
-    //    switch ( AttackDirection ) {
-    //    case 1: //Down-Right
-    //        y += 1;
-    //        break;
-    //    case 2: // Down-Left
-    //        x -= 1;
-    //        y += 1;
-    //        break;
-    //    case 4: // LEFT
-    //        x -= 1;
-    //        break;
-    //    case 8: // UP-Left
-    //        x -= 1;
-    //        y -= 1;
-    //        break;
-    //    case 16: // UP-Right
-    //        y -= 1;
-    //        break;
-    //    case 32: // Right
-    //        x += 1;
-    //        break;
-    //    default:
-    //        std::cerr << "Invalid attack direction!" << std::endl;
-    //    }
-    //    return std::make_tuple( x, y );
-    //    }
-    //    if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
-    //        std::cerr << "Coordinates out of bounds after attack!" << std::endl;
-    //        return std::make_tuple( -1, -1 ); // Invalid coordinates
-    //    }
-    //    return std::make_tuple( x, y );
-    //}
-
-    //int coordinates_to_grid_id( int x, int y )
-    //{
-    //    if ( x < 0 || x >= 11 || y < 0 || y >= 9 ) {
-    //        std::cerr << "Coordinates out of bounds!" << std::endl;
-    //        return -1; // Invalid grid ID
-    //    }
-    //    return ( y * 11 + x + 1 ); 
-    //}
-
-    //int apply_attack_to_grid( int GridID, int AttackDirection )
-    //{
-    //    auto coords = grid_id_to_coordinates( GridID );
-    //    auto new_coords = apply_attack_to_coordinates( coords, AttackDirection );
-
-    //    return coordinates_to_grid_id( std::get<0>( new_coords ), std::get<1>( new_coords ) );
-    //}
-
     std::vector<torch::Tensor> predict( BattleLSTM & model, const torch::Tensor & input )
     {
        model->eval(); // Set the model to evaluation mode
@@ -252,11 +188,12 @@ namespace NNAI
        return output;
     }
 
+
     // Converts a vector of action indices (from NN output) to Battle::Actions
     Battle::Actions predict_action( const Battle::Unit & currentUnit, Battle::Arena & arena ) // , const Battle::Arena & arena 
     {
-        //BattleLSTM model = getModelByColor(currentUnit.GetColor()); //TODO
-        BattleLSTM & model = *g_model1; // Placeholder for actual model retrieval logic
+        BattleLSTM & model = * getModelByColor(currentUnit.GetColor());
+        //BattleLSTM & model = *g_model1; // Placeholder for actual model retrieval logic
         
         if ( !model) {
             std::cerr << "Error: Neural network model (g_model1) is not initialized!" << std::endl;
@@ -274,12 +211,7 @@ namespace NNAI
         int positionNum = nn_output[1].argmax( 1 ).item<int>(); // Position index for MOVE, ATTACK, SPELLCAST
         int attack_direction = nn_output[3].argmax( 1 ).item<int>(); // Direction index for ATTACK (0-6)
 
-        
-        actionType = 1;
-        positionNum = 1;
-        attack_direction = 5;
-              
-        
+
         attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
 
@@ -287,12 +219,12 @@ namespace NNAI
         //int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
         int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
         
-        int targetUnitId = -1;
+        int targetUnitUID = -1;
         auto cell = arena.GetBoard()->GetCell( attackTargetPositon );
         if ( cell ) {
             auto unit = cell->GetUnit();
             if ( unit ) {
-                targetUnitId = unit->GetID();
+                targetUnitUID = unit->GetUID();
             }
         }
 
@@ -311,7 +243,7 @@ namespace NNAI
                   << ", Position Num: "<< positionNum
                   << ", Attack Direction: "<< attack_direction 
                   << ", Current Unit UID: "<< currentUnitUID 
-                  << ", Target Unit ID: " << targetUnitId
+                  << ", Target unit UID: " << targetUnitUID
                   << ", Attack Target Position: " << attackTargetPositon << std::endl;
 
 
@@ -335,7 +267,7 @@ namespace NNAI
             break;
         case 1:
             // ATTACK: [CommandType, unitUID, targetUnitUID, moveTargetIdx, attackTargetIdx, attackDirection]
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitId, positionNum, attackTargetPositon, attack_direction );
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attack_direction );
             // TODO
             break;
         case 2:
@@ -505,7 +437,7 @@ namespace NNAI
 
 void PrintUnitInfo( const Battle::Unit & unit ) 
 {
-    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Count: " << unit.GetCount()
+    std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Unit UID: "<< unit.GetUID() << ", Count: " << unit.GetCount()
               << ", Position: " << unit.GetPosition().GetHead()->GetIndex() << ", Shooting: " << unit.GetShots() << ", speed: " << unit.GetSpeed()
               << " HitPoints: " << unit.GetHitPointsLeft() << std::endl;
 }

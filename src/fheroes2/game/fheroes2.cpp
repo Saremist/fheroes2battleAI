@@ -465,11 +465,8 @@ int default_main( int argc, char ** argv )
 
 int main( int argc, char ** argv )
 {
-    // Initialize the neural network models
-    NNAI::loadModel( NNAI::g_model1, "model1.pt" );
-    NNAI::loadModel( NNAI::g_model2, "model2.pt" );
+    NNAI::initializeGlobalModels();
     if ( NNAI::isTraining ) {
-
         return training_main( argc, argv );
     }
 

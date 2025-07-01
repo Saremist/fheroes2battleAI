@@ -26,8 +26,6 @@ namespace NNAI
 
     extern torch::Device device;
 
-    void initializeGlobalModels( int64_t input_size, int64_t hidden_size, int64_t num_layers );
-
     struct BattleLSTMImpl : torch::nn::Module
     {
         torch::nn::LSTM lstm_layer{ nullptr };
@@ -50,7 +48,46 @@ namespace NNAI
             register_module( "position_head", position_head );
             register_module( "target_id_head", target_id_head );
             register_module( "direction_head", direction_head );
+
+                        // --- Initialize LSTM ---
+            for ( int layer = 0; layer < num_layers; ++layer ) {
+                torch::NoGradGuard no_grad;
+                // Use named_parameters() to access by string key
+                auto params = lstm_layer->named_parameters();
+                auto w_ih = params.find( "weight_ih_l" + std::to_string( layer ) );
+                auto w_hh = params.find( "weight_hh_l" + std::to_string( layer ) );
+                auto b_ih = params.find( "bias_ih_l" + std::to_string( layer ) );
+                auto b_hh = params.find( "bias_hh_l" + std::to_string( layer ) );
+
+                if ( w_hh != nullptr )
+                    torch::nn::init::orthogonal_( *w_hh );
+                if ( w_ih != nullptr )
+                    torch::nn::init::xavier_uniform_( *w_ih );
+                if ( b_ih != nullptr )
+                    b_ih->zero_();
+                if ( b_hh != nullptr )
+                    b_hh->zero_();
+
+                // Forget gate bias to 1.0
+                int64_t hidden = hidden_size;
+                if ( b_ih != nullptr )
+                    b_ih->slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
+                if ( b_hh != nullptr )
+                    b_hh->slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
+            }
+
+            // --- Initialize output heads (Xavier) ---
+            torch::nn::init::xavier_uniform_( action_type_head->weight );
+            torch::nn::init::xavier_uniform_( position_head->weight );
+            torch::nn::init::xavier_uniform_( target_id_head->weight );
+            torch::nn::init::xavier_uniform_( direction_head->weight );
+
+            torch::nn::init::constant_( action_type_head->bias, 0 );
+            torch::nn::init::constant_( position_head->bias, 0 );
+            torch::nn::init::constant_( target_id_head->bias, 0 );
+            torch::nn::init::constant_( direction_head->bias, 0 );
         }
+
 
         std::vector<torch::Tensor> forward( torch::Tensor x )
         {
@@ -75,26 +112,22 @@ namespace NNAI
     TORCH_MODULE( BattleLSTM );
 
     // Model management
+    void initializeGlobalModels();
     void createAndSaveModel( const std::string & model_path );
-    //BattleLSTM createModel( int64_t input_size, int64_t hidden_size, int64_t num_layers );
+    std::shared_ptr<BattleLSTM> getModelByColor( int color );
     void saveModel( const BattleLSTM & model, const std::string & model_path );
     void loadModel( std::shared_ptr<BattleLSTM>& modelPtr, const std::string & model_path );
-    void trainModel( BattleLSTM & model, int64_t num_epochs, double learning_rate, torch::Device device );
+    // Using Models
+    void trainModel( BattleLSTM & model, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
     std::vector<torch::Tensor> predict( BattleLSTM & model, const torch::Tensor & input );
     //torch::Tensor preprocessInput( const std::vector<float> & raw_data );
     torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
     Battle::Actions predict_action(const Battle::Unit & currentUnit, Battle::Arena & arena );
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
-
-    bool isNNControlled( int color );
-    
-    // GridId utility functions
-    std::tuple<int, int> grid_id_to_coordinates( int GridID );
-    std::tuple<int, int> apply_attack_to_coordinates( std::tuple<int, int> GridCoords, int AttackDirection );
-    int coordinates_to_grid_id( int x, int y );
-    int apply_attack_to_grid( int GridID, int AttackDirection );
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion, int training_loops );
+
+    bool isNNControlled( int color ); // TODO MW
 }
 
 void PrintUnitInfo( const Battle::Unit & unit );
