@@ -225,7 +225,9 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
         armyInfo[0].hero = world.GetHeroes( getRandomHeroId() );
         armyInfo[0].isHeroPresent = true;
 
-        armyInfo[1].hero = world.GetHeroes( getRandomHeroId());
+    do {
+        armyInfo[1].hero = world.GetHeroes( getRandomHeroId() );
+    } while ( armyInfo[1].hero == armyInfo[0].hero );
         armyInfo[1].isHeroPresent = true;
     //}
 
