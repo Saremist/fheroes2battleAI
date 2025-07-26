@@ -77,6 +77,9 @@ namespace AI
         void battleBegins();
 
         void BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions );
+        // When this limit of turns without deaths is exceeded for an attacking AI-controlled hero,
+        // the auto battle should be interrupted (one way or another)
+        static const uint32_t MAX_TURNS_WITHOUT_DEATHS = 5;
 
     private:
         BattlePlanner() = default;
@@ -110,10 +113,6 @@ namespace AI
         double getSpellSlowRatio( const Battle::Unit & target ) const;
         double getSpellHasteRatio( const Battle::Unit & target ) const;
         int32_t spellDurationMultiplier( const Battle::Unit & target ) const;
-
-        // When this limit of turns without deaths is exceeded for an attacking AI-controlled hero,
-        // the auto battle should be interrupted (one way or another)
-        static const uint32_t MAX_TURNS_WITHOUT_DEATHS = 50;
 
         // Member variables related to the logic of checking the limit of the number of turns
         uint32_t _currentTurnNumber = 0;

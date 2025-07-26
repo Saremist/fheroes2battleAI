@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "NN_ai.h"
 #include "ai_planner.h"
 #include "army.h"
 #include "army_troop.h"
@@ -324,12 +325,13 @@ bool Battle::PrepareBattle( Army & army1, Army & army2, int32_t mapsindex, Resul
     return true;
 }
 
-#include "NN_ai.h"
-
 Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t mapsindex, bool showBattle, const uint32_t battleSeed, const Funds & initialFunds1,
                                           const Funds & initialFunds2, HeroBase * commander1, HeroBase * commander2, bool isHumanBattle )
 {
     Result result;
+    // reset savestates
+    NNAI::prevEnemyHP1 = NNAI::prevAllyHP1 = NNAI::prevEnemyUnits1 = NNAI::prevAllyUnits1 = -1;
+    NNAI::prevEnemyHP2 = NNAI::prevAllyHP2 = NNAI::prevEnemyUnits2 = NNAI::prevAllyUnits2 = -1;
 
     while ( true ) {
         Rand::DeterministicRandomGenerator randomGenerator( battleSeed );
@@ -339,25 +341,26 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
         DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army2 " << army2.String() )
 
         while ( arena.BattleValid() ) {
+            NNAI::m1skipCount = 0;
+            NNAI::m2skipCount = 0;
+            NNAI::m1turnCount = 0;
+            NNAI::m2turnCount = 0;
+            NNAI::m1CorrectMovesCount = 0;
+            NNAI::m2CorrectMovesCount = 0;
             arena.Turns();
-            Result temp_result = arena.GetResult();
-            std::cout << "Turn " << arena.GetTurnNumber() << std::endl;
-            std::cout << "Army1: " << army1.String() << std::endl;
-            std::cout << "Army2: " << army2.String() << std::endl;
-            std::cout << "AIScoreBalance: " << temp_result.AIScoreBalance << std::endl;
         }
 
-        std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Battle ended!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+        // std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Battle ended!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
 
         result = arena.GetResult();
-        std::cout << result << std::endl;
+        // std::cout << result << std::endl;
 
         if ( showBattle ) {
             const bool clearMessageLog = ( result.army1 & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.army2 & ( RESULT_RETREAT | RESULT_SURRENDER ) );
             arena.FadeArena( clearMessageLog );
         }
 
-        if (!NNAI::isTraining && isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
+        if ( !NNAI::isTraining && isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
             showBattle = true;
 
             if ( commander1 ) {
@@ -416,11 +419,10 @@ Battle::Result Battle::Loader( Army & army1, Army & army2, int32_t mapsindex )
     result = ExecuteBattleLoop( army1, army2, mapsindex, !Settings::Get().BattleAutoResolve(), battleSeed, initialFunds1, initialFunds2, commander1, commander2,
                                 isHumanBattle );
 
-
     // Post-Battle Phase
     FinalizeBattleResult( result, army1, army2, commander1, commander2 );
 
-    return result; //moved to skip post battle screen
+    return result; // moved to skip post battle screen
 }
 
 uint32_t Battle::Result::AttackerResult() const

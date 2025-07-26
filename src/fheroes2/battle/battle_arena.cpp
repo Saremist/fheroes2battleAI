@@ -459,6 +459,8 @@ Battle::Arena::~Arena()
     arena = nullptr;
 }
 
+#include "NN_ai.h"
+
 void Battle::Arena::UnitTurn( const Units & orderHistory )
 {
     assert( _currentUnit && _currentUnit->isValid() );
@@ -513,6 +515,17 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
                 assert( _interface != nullptr );
 
                 _interface->HumanTurn( *_currentUnit, actions );
+            }
+            if ( NNAI::isTraining ) {
+                // Calculate and store reward for both
+                if ( _currentUnit->GetArmyColor() == _army1->GetColor() ) {
+                    float reward1 = Battle::calculateReward( *this, this->GetArmy1Color() );
+                    NNAI::g_rewards1->push_back( torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ) );
+                }
+                else {
+                    float reward2 = Battle::calculateReward( *this, this->GetArmy2Color() );
+                    NNAI::g_rewards2->push_back( torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ) );
+                }
             }
         }
 
@@ -1474,4 +1487,3 @@ bool Battle::Arena::CanToggleAutoBattle() const
 
     return !( GetCurrentForce().GetControl() & CONTROL_AI );
 }
-

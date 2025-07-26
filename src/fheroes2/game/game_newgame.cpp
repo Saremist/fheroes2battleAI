@@ -155,6 +155,8 @@ fheroes2::GameMode Game::NewBattleOnly()
     return fheroes2::GameMode::NEW_MULTI;
 }
 
+#include "NN_ai.h"
+
 fheroes2::GameMode Game::NewHotSeat()
 {
     Settings & conf = Settings::Get();
@@ -186,7 +188,7 @@ fheroes2::GameMode Game::NewHotSeat()
             break;
         }
     }
-    return fheroes2::GameMode::NEW_BATTLE_ONLY;
+    return fheroes2::GameMode::QUIT_GAME;
 }
 
 fheroes2::GameMode Game::CampaignSelection()

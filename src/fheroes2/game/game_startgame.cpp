@@ -214,9 +214,9 @@ fheroes2::GameMode Game::StartBattleOnly()
         break;
     }
 
-    return ( NNAI::isTraining ? fheroes2::GameMode::NEW_BATTLE_ONLY : fheroes2::GameMode::MAIN_MENU );
+    return ( NNAI::isTraining ? fheroes2::GameMode::QUIT_GAME : fheroes2::GameMode::MAIN_MENU );
 
-    //return fheroes2::GameMode::MAIN_MENU;
+    // return fheroes2::GameMode::MAIN_MENU;
 }
 
 fheroes2::GameMode Game::StartGame()
@@ -904,9 +904,7 @@ fheroes2::GameMode Interface::AdventureMap::StartGame()
         // We went through all the players, but the current player from the save file is still not found,
         // something is clearly wrong here
         if ( skipTurns ) {
-            DEBUG_LOG( DBG_GAME, DBG_WARN,
-                       "the current player from the save file was not found"
-                           << ", player color: " << Color::String( conf.CurrentColor() ) )
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "the current player from the save file was not found" << ", player color: " << Color::String( conf.CurrentColor() ) )
 
             res = fheroes2::GameMode::MAIN_MENU;
         }

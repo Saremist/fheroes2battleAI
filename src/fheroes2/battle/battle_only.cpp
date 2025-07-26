@@ -93,7 +93,6 @@ Battle::Only::Only()
 {
     armyInfo[1].armyId = 1;
 
-
     armyInfo[0].controlType = CONTROL_HUMAN;
     armyInfo[0].player.SetControl( armyInfo[0].controlType );
     armyInfo[0].player.SetColor( playerColor[0] );
@@ -101,14 +100,14 @@ Battle::Only::Only()
     armyInfo[1].controlType = CONTROL_AI;
     armyInfo[1].player.SetControl( armyInfo[1].controlType );
     armyInfo[1].player.SetColor( playerColor[1] );
-    
+
     for ( auto & info : armyInfo ) {
         info.monster.GetTroop( 0 )->Set( Monster::PEASANT, 100 );
         info.monsterBackup.Assign( info.monster );
     }
 }
 
-#include <random> 
+#include <random>
 int getRandomHeroId()
 {
     static bool seeded = false;
@@ -122,7 +121,7 @@ int getRandomHeroId()
     int offset = 1;
 
     // Generate a random number within the range
-    int randomHeroId = offset + ( rand() % ( range) ); // Add 1 to include the upper limit
+    int randomHeroId = offset + ( rand() % ( range ) ); // Add 1 to include the upper limit
 
     return randomHeroId;
 }
@@ -175,7 +174,7 @@ void FillRandomTrainingTroops( Heroes * hero )
             troop->SetCount( 0 );
         }
     }
-    std::cout << std::endl;
+    // std::cout << std::endl;
 }
 
 #include "NN_ai.h"
@@ -197,7 +196,7 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     armyInfo[0].portraitRoi = { cur_pt.x + 93, cur_pt.y + 72, 101, 93 };
     armyInfo[1].portraitRoi = { cur_pt.x + 445, cur_pt.y + 72, 101, 93 };
 
-    //armyInfo[0].player.SetControl( armyInfo[0].controlType ); //OG Code
+    // armyInfo[0].player.SetControl( armyInfo[0].controlType ); //OG Code
     armyInfo[0].player.SetControl( armyInfo[0].controlType );
     armyInfo[1].player.SetControl( armyInfo[1].controlType );
 
@@ -221,14 +220,14 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
         }
     }
 
-    //if ( !_backupCompleted || !allowBackup ) {
-        armyInfo[0].hero = world.GetHeroes( getRandomHeroId() );
-        armyInfo[0].isHeroPresent = true;
+    // if ( !_backupCompleted || !allowBackup ) {
+    armyInfo[0].hero = world.GetHeroes( getRandomHeroId() );
+    armyInfo[0].isHeroPresent = true;
 
     do {
         armyInfo[1].hero = world.GetHeroes( getRandomHeroId() );
     } while ( armyInfo[1].hero == armyInfo[0].hero );
-        armyInfo[1].isHeroPresent = true;
+    armyInfo[1].isHeroPresent = true;
     //}
 
     const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
@@ -285,8 +284,6 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     buttonReset.draw();
 
     display.render();
-
-    //bool result = false;
     bool result = NNAI::isTraining;
 
     while ( !NNAI::isTraining && le.HandleEvents() ) { // will skip input and instantly start a game if training mode is enabled
@@ -475,294 +472,293 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     return result;
 }
 
-
-//bool Battle::Only::setup( const bool allowBackup, bool & reset )
+// bool Battle::Only::setup( const bool allowBackup, bool & reset )
 //{
-//    reset = false;
+//     reset = false;
 //
-//    fheroes2::Display & display = fheroes2::Display::instance();
-//    LocalEvent & le = LocalEvent::Get();
+//     fheroes2::Display & display = fheroes2::Display::instance();
+//     LocalEvent & le = LocalEvent::Get();
 //
-//    // setup cursor
-//    const CursorRestorer cursorRestorer( true, Cursor::POINTER );
+//     // setup cursor
+//     const CursorRestorer cursorRestorer( true, Cursor::POINTER );
 //
-//    const fheroes2::StandardWindow frameborder( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT, false );
-//
-//    const fheroes2::Point cur_pt( frameborder.activeArea().x, frameborder.activeArea().y );
+//     const fheroes2::StandardWindow frameborder( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT, false );
+//
+//     const fheroes2::Point cur_pt( frameborder.activeArea().x, frameborder.activeArea().y );
 //
-//    armyInfo[0].portraitRoi = { cur_pt.x + 93, cur_pt.y + 72, 101, 93 };
-//    armyInfo[1].portraitRoi = { cur_pt.x + 445, cur_pt.y + 72, 101, 93 };
+//     armyInfo[0].portraitRoi = { cur_pt.x + 93, cur_pt.y + 72, 101, 93 };
+//     armyInfo[1].portraitRoi = { cur_pt.x + 445, cur_pt.y + 72, 101, 93 };
 //
-//    armyInfo[0].player.SetControl( armyInfo[0].controlType );
-//    armyInfo[1].player.SetControl( armyInfo[1].controlType );
-//
-//    for ( auto & info : armyInfo ) {
-//        info.hero = nullptr;
-//        info.monster.Reset();
-//        info.monster.GetTroop( 0 )->Set( Monster::PEASANT, 100 );
+//     armyInfo[0].player.SetControl( armyInfo[0].controlType );
+//     armyInfo[1].player.SetControl( armyInfo[1].controlType );
+//
+//     for ( auto & info : armyInfo ) {
+//         info.hero = nullptr;
+//         info.monster.Reset();
+//         info.monster.GetTroop( 0 )->Set( Monster::PEASANT, 100 );
 //
-//        if ( !_backupCompleted || !allowBackup ) {
-//            continue;
-//        }
+//         if ( !_backupCompleted || !allowBackup ) {
+//             continue;
+//         }
 //
-//        if ( info.isHeroPresent ) {
-//            info.hero = world.GetHeroes( info.heroBackup.GetID() );
-//            info.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
-//
-//            copyHero( info.heroBackup, *info.hero );
-//        }
-//        else {
-//            info.monster.Assign( info.monsterBackup );
-//        }
-//    }
-//
-//    if ( !_backupCompleted || !allowBackup ) {
-//        armyInfo[0].hero = world.GetHeroes( Heroes::LORDKILBURN );
-//        armyInfo[0].isHeroPresent = true;
-//    }
-//
-//    const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
-//    fheroes2::Copy( background, 0, 0, display, cur_pt.x, cur_pt.y, background.width(), background.height() );
-//
-//    redrawOpponents( cur_pt );
-//    redrawOpponentsStats( cur_pt );
-//
-//    for ( auto & info : armyInfo ) {
-//        if ( info.hero != nullptr ) {
-//            info.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
-//
-//            updateHero( info, cur_pt );
-//        }
-//        else {
-//            info.ui.army = std::make_unique<ArmyBar>( &info.monster, true, false, true );
-//            info.ui.army->setTableSize( { 5, 1 } );
-//            info.ui.army->setRenderingOffset( { cur_pt.x + armyOffsetX[info.armyId], cur_pt.y + 267 } );
-//            info.ui.army->setInBetweenItemsOffset( { 2, 0 } );
-//        }
-//    }
-//
-//    if ( armyInfo[1].hero != nullptr ) {
-//        attackedArmyControlInfo = std::make_unique<ControlInfo>( fheroes2::Point{ cur_pt.x + 500, cur_pt.y + 425 }, armyInfo[1].player.GetControl() );
-//    }
-//
-//    for ( const auto & info : armyInfo ) {
-//        info.ui.redraw( display );
-//    }
-//
-//    if ( attackedArmyControlInfo ) {
-//        attackedArmyControlInfo->Redraw();
-//    }
-//
-//    // hide the swap army/artifact arrows
-//    const fheroes2::Sprite & stoneBackground = fheroes2::AGG::GetICN( ICN::STONEBAK, 0 );
-//    fheroes2::Copy( stoneBackground, 292, 270, display, cur_pt.x + 292, cur_pt.y + 270, 48, 44 );
-//    fheroes2::Copy( stoneBackground, 292, 363, display, cur_pt.x + 292, cur_pt.y + 363, 48, 44 );
-//
-//    // hide the shadow from the original EXIT button
-//    const fheroes2::Sprite buttonOverride = fheroes2::Crop( fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 ), 122, 428, 84, 32 );
-//    fheroes2::Copy( buttonOverride, 0, 0, display, cur_pt.x + 276, cur_pt.y + 428, 84, 32 );
-//
-//    fheroes2::Button buttonReset( cur_pt.x + 30, cur_pt.y + 428, ICN::BUTTON_RESET_GOOD, 0, 1 );
-//    fheroes2::Button buttonStart( cur_pt.x + 178, cur_pt.y + 428, ICN::BUTTON_START_GOOD, 0, 1 );
-//    fheroes2::Button buttonExit( cur_pt.x + 366, cur_pt.y + 428, ICN::BUTTON_EXIT_GOOD, 0, 1 );
-//
-//    fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_RESET_GOOD, 0 ), display, buttonReset.area().getPosition(), { -5, 5 } );
-//    fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_START_GOOD, 0 ), display, buttonStart.area().getPosition(), { -5, 5 } );
-//    fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_EXIT_GOOD, 0 ), display, buttonExit.area().getPosition(), { -5, 5 } );
-//
-//    buttonStart.draw();
-//    buttonExit.draw();
-//    buttonReset.draw();
-//
-//    display.render();
-//
-//    bool result = false;
-//
-//    while ( le.HandleEvents() ) {
-//        bool updateSpellPoints = false;
-//        bool needRender = false;
-//        bool needRedrawOpponentsStats = false;
-//        bool needRedrawControlInfo = false;
-//
-//        buttonStart.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonStart.area() ) ? buttonStart.drawOnPress() : buttonStart.drawOnRelease();
-//        buttonExit.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonExit.area() ) ? buttonExit.drawOnPress() : buttonExit.drawOnRelease();
-//        buttonReset.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonReset.area() ) ? buttonReset.drawOnPress() : buttonReset.drawOnRelease();
-//
-//        if ( ( buttonStart.isEnabled() && le.MouseClickLeft( buttonStart.area() ) ) || Game::HotKeyPressEvent( Game::HotKeyEvent::DEFAULT_OKAY ) ) {
-//            result = true;
-//
-//            break;
-//        }
-//        if ( le.MouseClickLeft( buttonReset.area() ) ) {
-//            reset = true;
-//            result = true;
-//
-//            break;
-//        }
-//
-//        if ( le.MouseClickLeft( buttonExit.area() ) || Game::HotKeyPressEvent( Game::HotKeyEvent::DEFAULT_CANCEL ) ) {
-//            break;
-//        }
-//
-//        if ( le.isMouseRightButtonPressedInArea( buttonStart.area() ) ) {
-//            fheroes2::showStandardTextMessage( _( "Start" ), _( "Start the battle." ), 0 );
-//        }
-//        else if ( le.isMouseRightButtonPressedInArea( buttonExit.area() ) ) {
-//            fheroes2::showStandardTextMessage( _( "Exit" ), _( "Exit this menu." ), 0 );
-//        }
-//        else if ( le.isMouseRightButtonPressedInArea( buttonReset.area() ) ) {
-//            fheroes2::showStandardTextMessage( _( "Reset" ), _( "Reset to default settings." ), 0 );
-//        }
-//
-//        for ( const auto & [firstId, secondId] : { std::pair<int32_t, int32_t>( 0, 1 ), std::pair<int32_t, int32_t>( 1, 0 ) } ) {
-//            ArmyInfo & first = armyInfo[firstId];
-//            const ArmyInfo & second = armyInfo[secondId];
-//
-//            if ( le.MouseClickLeft( first.portraitRoi ) ) {
-//                const int hid = Dialog::selectHeroes( first.hero ? first.hero->GetID() : Heroes::UNKNOWN );
-//                if ( second.hero && hid == second.hero->GetID() ) {
-//                    fheroes2::showStandardTextMessage( _( "Error" ), _( "Please select another hero." ), Dialog::OK );
-//                }
-//                else if ( Heroes::UNKNOWN != hid ) {
-//                    first.hero = world.GetHeroes( hid );
-//
-//                    if ( first.hero ) {
-//                        first.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
-//                    }
-//
-//                    updateHero( first, cur_pt );
-//                }
-//
-//                redrawOpponents( cur_pt );
-//
-//                first.needRedraw = true;
-//                needRedrawOpponentsStats = true;
-//
-//                // User can not click two hero portraits at the same time so we can break the loop.
-//                break;
-//            }
-//        }
-//
-//        if ( attackedArmyControlInfo == nullptr && armyInfo[1].hero != nullptr ) {
-//            attackedArmyControlInfo = std::make_unique<ControlInfo>( fheroes2::Point{ cur_pt.x + 500, cur_pt.y + 425 }, armyInfo[1].player.GetControl() );
-//            needRedrawControlInfo = true;
-//        }
-//
-//        for ( const auto & [firstId, secondId] : { std::pair<int32_t, int32_t>{ 0, 1 }, std::pair<int32_t, int32_t>{ 1, 0 } } ) {
-//            const ArmyUI & firstUI = armyInfo[firstId].ui;
-//            const ArmyUI & secondUI = armyInfo[secondId].ui;
-//
-//            if ( firstUI.army != nullptr && le.isMouseCursorPosInArea( firstUI.army->GetArea() ) && firstUI.army->QueueEventProcessing() ) {
-//                if ( firstUI.artifact != nullptr && firstUI.artifact->isSelected() ) {
-//                    firstUI.artifact->ResetSelected();
-//                }
-//
-//                if ( secondUI.artifact != nullptr && secondUI.artifact->isSelected() ) {
-//                    secondUI.artifact->ResetSelected();
-//                }
-//
-//                if ( secondUI.army != nullptr && secondUI.army->isSelected() ) {
-//                    secondUI.army->ResetSelected();
-//                }
-//
-//                armyInfo[firstId].needRedraw = true;
-//            }
-//            else if ( firstUI.artifact != nullptr && le.isMouseCursorPosInArea( firstUI.artifact->GetArea() ) && firstUI.artifact->QueueEventProcessing() ) {
-//                if ( firstUI.army != nullptr && firstUI.army->isSelected() ) {
-//                    firstUI.army->ResetSelected();
-//                }
-//
-//                if ( secondUI.artifact != nullptr && secondUI.artifact->isSelected() ) {
-//                    secondUI.artifact->ResetSelected();
-//                }
-//
-//                if ( secondUI.army != nullptr && secondUI.army->isSelected() ) {
-//                    secondUI.army->ResetSelected();
-//                }
-//
-//                armyInfo[firstId].needRedraw = true;
-//                updateSpellPoints = true;
-//                needRedrawOpponentsStats = true;
-//            }
-//            else if ( firstUI.morale != nullptr && le.isMouseCursorPosInArea( firstUI.morale->GetArea() ) ) {
-//                MoraleIndicator::QueueEventProcessing( *firstUI.morale );
-//            }
-//            else if ( firstUI.luck != nullptr && le.isMouseCursorPosInArea( firstUI.luck->GetArea() ) ) {
-//                LuckIndicator::QueueEventProcessing( *firstUI.luck );
-//            }
-//            else if ( firstUI.primarySkill != nullptr && le.isMouseCursorPosInArea( firstUI.primarySkill->GetArea() ) ) {
-//                if ( firstUI.primarySkill->QueueEventProcessing() ) {
-//                    updateSpellPoints = true;
-//                    needRedrawOpponentsStats = true;
-//                }
-//            }
-//            else if ( firstUI.secondarySkill != nullptr && le.isMouseCursorPosInArea( firstUI.secondarySkill->GetArea() )
-//                      && firstUI.secondarySkill->QueueEventProcessing() ) {
-//                armyInfo[firstId].needRedraw = true;
-//            }
-//        }
-//
-//        if ( attackedArmyControlInfo ) {
-//            assert( armyInfo[1].hero );
-//
-//            if ( le.MouseClickLeft( attackedArmyControlInfo->rtLocal ) && armyInfo[1].player.isControlAI() ) {
-//                attackedArmyControlInfo->result = CONTROL_HUMAN;
-//                armyInfo[1].player.SetControl( CONTROL_HUMAN );
-//
-//                needRedrawControlInfo = true;
-//            }
-//            else if ( le.MouseClickLeft( attackedArmyControlInfo->rtAI ) && armyInfo[1].player.isControlHuman() ) {
-//                attackedArmyControlInfo->result = CONTROL_AI;
-//                armyInfo[1].player.SetControl( CONTROL_AI );
-//
-//                needRedrawControlInfo = true;
-//            }
-//        }
-//
-//        if ( updateSpellPoints ) {
-//            for ( Heroes * hero : { armyInfo[0].hero, armyInfo[1].hero } ) {
-//                if ( hero == nullptr ) {
-//                    continue;
-//                }
-//
-//                hero->SetSpellPoints( hero->GetMaxSpellPoints() );
-//            }
-//        }
-//
-//        if ( needRedrawOpponentsStats ) {
-//            redrawOpponentsStats( cur_pt );
-//
-//            needRender = true;
-//        }
-//
-//        for ( const int32_t i : { 0, 1 } ) {
-//            if ( armyInfo[i].needRedraw ) {
-//                armyInfo[i].ui.redraw( display );
-//                armyInfo[i].needRedraw = false;
-//
-//                needRender = true;
-//            }
-//        }
-//
-//        if ( needRedrawControlInfo ) {
-//            assert( attackedArmyControlInfo != nullptr );
-//            attackedArmyControlInfo->Redraw();
-//
-//            needRender = true;
-//        }
-//
-//        if ( needRender ) {
-//            display.render();
-//        }
-//    }
-//
-//    armyInfo[0].ui = {};
-//    armyInfo[1].ui = {};
-//
-//    attackedArmyControlInfo.reset();
-//
-//    return result;
-//}
+//         if ( info.isHeroPresent ) {
+//             info.hero = world.GetHeroes( info.heroBackup.GetID() );
+//             info.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
+//
+//             copyHero( info.heroBackup, *info.hero );
+//         }
+//         else {
+//             info.monster.Assign( info.monsterBackup );
+//         }
+//     }
+//
+//     if ( !_backupCompleted || !allowBackup ) {
+//         armyInfo[0].hero = world.GetHeroes( Heroes::LORDKILBURN );
+//         armyInfo[0].isHeroPresent = true;
+//     }
+//
+//     const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
+//     fheroes2::Copy( background, 0, 0, display, cur_pt.x, cur_pt.y, background.width(), background.height() );
+//
+//     redrawOpponents( cur_pt );
+//     redrawOpponentsStats( cur_pt );
+//
+//     for ( auto & info : armyInfo ) {
+//         if ( info.hero != nullptr ) {
+//             info.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
+//
+//             updateHero( info, cur_pt );
+//         }
+//         else {
+//             info.ui.army = std::make_unique<ArmyBar>( &info.monster, true, false, true );
+//             info.ui.army->setTableSize( { 5, 1 } );
+//             info.ui.army->setRenderingOffset( { cur_pt.x + armyOffsetX[info.armyId], cur_pt.y + 267 } );
+//             info.ui.army->setInBetweenItemsOffset( { 2, 0 } );
+//         }
+//     }
+//
+//     if ( armyInfo[1].hero != nullptr ) {
+//         attackedArmyControlInfo = std::make_unique<ControlInfo>( fheroes2::Point{ cur_pt.x + 500, cur_pt.y + 425 }, armyInfo[1].player.GetControl() );
+//     }
+//
+//     for ( const auto & info : armyInfo ) {
+//         info.ui.redraw( display );
+//     }
+//
+//     if ( attackedArmyControlInfo ) {
+//         attackedArmyControlInfo->Redraw();
+//     }
+//
+//     // hide the swap army/artifact arrows
+//     const fheroes2::Sprite & stoneBackground = fheroes2::AGG::GetICN( ICN::STONEBAK, 0 );
+//     fheroes2::Copy( stoneBackground, 292, 270, display, cur_pt.x + 292, cur_pt.y + 270, 48, 44 );
+//     fheroes2::Copy( stoneBackground, 292, 363, display, cur_pt.x + 292, cur_pt.y + 363, 48, 44 );
+//
+//     // hide the shadow from the original EXIT button
+//     const fheroes2::Sprite buttonOverride = fheroes2::Crop( fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 ), 122, 428, 84, 32 );
+//     fheroes2::Copy( buttonOverride, 0, 0, display, cur_pt.x + 276, cur_pt.y + 428, 84, 32 );
+//
+//     fheroes2::Button buttonReset( cur_pt.x + 30, cur_pt.y + 428, ICN::BUTTON_RESET_GOOD, 0, 1 );
+//     fheroes2::Button buttonStart( cur_pt.x + 178, cur_pt.y + 428, ICN::BUTTON_START_GOOD, 0, 1 );
+//     fheroes2::Button buttonExit( cur_pt.x + 366, cur_pt.y + 428, ICN::BUTTON_EXIT_GOOD, 0, 1 );
+//
+//     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_RESET_GOOD, 0 ), display, buttonReset.area().getPosition(), { -5, 5 } );
+//     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_START_GOOD, 0 ), display, buttonStart.area().getPosition(), { -5, 5 } );
+//     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_EXIT_GOOD, 0 ), display, buttonExit.area().getPosition(), { -5, 5 } );
+//
+//     buttonStart.draw();
+//     buttonExit.draw();
+//     buttonReset.draw();
+//
+//     display.render();
+//
+//     bool result = false;
+//
+//     while ( le.HandleEvents() ) {
+//         bool updateSpellPoints = false;
+//         bool needRender = false;
+//         bool needRedrawOpponentsStats = false;
+//         bool needRedrawControlInfo = false;
+//
+//         buttonStart.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonStart.area() ) ? buttonStart.drawOnPress() : buttonStart.drawOnRelease();
+//         buttonExit.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonExit.area() ) ? buttonExit.drawOnPress() : buttonExit.drawOnRelease();
+//         buttonReset.isEnabled() && le.isMouseLeftButtonPressedInArea( buttonReset.area() ) ? buttonReset.drawOnPress() : buttonReset.drawOnRelease();
+//
+//         if ( ( buttonStart.isEnabled() && le.MouseClickLeft( buttonStart.area() ) ) || Game::HotKeyPressEvent( Game::HotKeyEvent::DEFAULT_OKAY ) ) {
+//             result = true;
+//
+//             break;
+//         }
+//         if ( le.MouseClickLeft( buttonReset.area() ) ) {
+//             reset = true;
+//             result = true;
+//
+//             break;
+//         }
+//
+//         if ( le.MouseClickLeft( buttonExit.area() ) || Game::HotKeyPressEvent( Game::HotKeyEvent::DEFAULT_CANCEL ) ) {
+//             break;
+//         }
+//
+//         if ( le.isMouseRightButtonPressedInArea( buttonStart.area() ) ) {
+//             fheroes2::showStandardTextMessage( _( "Start" ), _( "Start the battle." ), 0 );
+//         }
+//         else if ( le.isMouseRightButtonPressedInArea( buttonExit.area() ) ) {
+//             fheroes2::showStandardTextMessage( _( "Exit" ), _( "Exit this menu." ), 0 );
+//         }
+//         else if ( le.isMouseRightButtonPressedInArea( buttonReset.area() ) ) {
+//             fheroes2::showStandardTextMessage( _( "Reset" ), _( "Reset to default settings." ), 0 );
+//         }
+//
+//         for ( const auto & [firstId, secondId] : { std::pair<int32_t, int32_t>( 0, 1 ), std::pair<int32_t, int32_t>( 1, 0 ) } ) {
+//             ArmyInfo & first = armyInfo[firstId];
+//             const ArmyInfo & second = armyInfo[secondId];
+//
+//             if ( le.MouseClickLeft( first.portraitRoi ) ) {
+//                 const int hid = Dialog::selectHeroes( first.hero ? first.hero->GetID() : Heroes::UNKNOWN );
+//                 if ( second.hero && hid == second.hero->GetID() ) {
+//                     fheroes2::showStandardTextMessage( _( "Error" ), _( "Please select another hero." ), Dialog::OK );
+//                 }
+//                 else if ( Heroes::UNKNOWN != hid ) {
+//                     first.hero = world.GetHeroes( hid );
+//
+//                     if ( first.hero ) {
+//                         first.hero->GetSecondarySkills().FillMax( Skill::Secondary() );
+//                     }
+//
+//                     updateHero( first, cur_pt );
+//                 }
+//
+//                 redrawOpponents( cur_pt );
+//
+//                 first.needRedraw = true;
+//                 needRedrawOpponentsStats = true;
+//
+//                 // User can not click two hero portraits at the same time so we can break the loop.
+//                 break;
+//             }
+//         }
+//
+//         if ( attackedArmyControlInfo == nullptr && armyInfo[1].hero != nullptr ) {
+//             attackedArmyControlInfo = std::make_unique<ControlInfo>( fheroes2::Point{ cur_pt.x + 500, cur_pt.y + 425 }, armyInfo[1].player.GetControl() );
+//             needRedrawControlInfo = true;
+//         }
+//
+//         for ( const auto & [firstId, secondId] : { std::pair<int32_t, int32_t>{ 0, 1 }, std::pair<int32_t, int32_t>{ 1, 0 } } ) {
+//             const ArmyUI & firstUI = armyInfo[firstId].ui;
+//             const ArmyUI & secondUI = armyInfo[secondId].ui;
+//
+//             if ( firstUI.army != nullptr && le.isMouseCursorPosInArea( firstUI.army->GetArea() ) && firstUI.army->QueueEventProcessing() ) {
+//                 if ( firstUI.artifact != nullptr && firstUI.artifact->isSelected() ) {
+//                     firstUI.artifact->ResetSelected();
+//                 }
+//
+//                 if ( secondUI.artifact != nullptr && secondUI.artifact->isSelected() ) {
+//                     secondUI.artifact->ResetSelected();
+//                 }
+//
+//                 if ( secondUI.army != nullptr && secondUI.army->isSelected() ) {
+//                     secondUI.army->ResetSelected();
+//                 }
+//
+//                 armyInfo[firstId].needRedraw = true;
+//             }
+//             else if ( firstUI.artifact != nullptr && le.isMouseCursorPosInArea( firstUI.artifact->GetArea() ) && firstUI.artifact->QueueEventProcessing() ) {
+//                 if ( firstUI.army != nullptr && firstUI.army->isSelected() ) {
+//                     firstUI.army->ResetSelected();
+//                 }
+//
+//                 if ( secondUI.artifact != nullptr && secondUI.artifact->isSelected() ) {
+//                     secondUI.artifact->ResetSelected();
+//                 }
+//
+//                 if ( secondUI.army != nullptr && secondUI.army->isSelected() ) {
+//                     secondUI.army->ResetSelected();
+//                 }
+//
+//                 armyInfo[firstId].needRedraw = true;
+//                 updateSpellPoints = true;
+//                 needRedrawOpponentsStats = true;
+//             }
+//             else if ( firstUI.morale != nullptr && le.isMouseCursorPosInArea( firstUI.morale->GetArea() ) ) {
+//                 MoraleIndicator::QueueEventProcessing( *firstUI.morale );
+//             }
+//             else if ( firstUI.luck != nullptr && le.isMouseCursorPosInArea( firstUI.luck->GetArea() ) ) {
+//                 LuckIndicator::QueueEventProcessing( *firstUI.luck );
+//             }
+//             else if ( firstUI.primarySkill != nullptr && le.isMouseCursorPosInArea( firstUI.primarySkill->GetArea() ) ) {
+//                 if ( firstUI.primarySkill->QueueEventProcessing() ) {
+//                     updateSpellPoints = true;
+//                     needRedrawOpponentsStats = true;
+//                 }
+//             }
+//             else if ( firstUI.secondarySkill != nullptr && le.isMouseCursorPosInArea( firstUI.secondarySkill->GetArea() )
+//                       && firstUI.secondarySkill->QueueEventProcessing() ) {
+//                 armyInfo[firstId].needRedraw = true;
+//             }
+//         }
+//
+//         if ( attackedArmyControlInfo ) {
+//             assert( armyInfo[1].hero );
+//
+//             if ( le.MouseClickLeft( attackedArmyControlInfo->rtLocal ) && armyInfo[1].player.isControlAI() ) {
+//                 attackedArmyControlInfo->result = CONTROL_HUMAN;
+//                 armyInfo[1].player.SetControl( CONTROL_HUMAN );
+//
+//                 needRedrawControlInfo = true;
+//             }
+//             else if ( le.MouseClickLeft( attackedArmyControlInfo->rtAI ) && armyInfo[1].player.isControlHuman() ) {
+//                 attackedArmyControlInfo->result = CONTROL_AI;
+//                 armyInfo[1].player.SetControl( CONTROL_AI );
+//
+//                 needRedrawControlInfo = true;
+//             }
+//         }
+//
+//         if ( updateSpellPoints ) {
+//             for ( Heroes * hero : { armyInfo[0].hero, armyInfo[1].hero } ) {
+//                 if ( hero == nullptr ) {
+//                     continue;
+//                 }
+//
+//                 hero->SetSpellPoints( hero->GetMaxSpellPoints() );
+//             }
+//         }
+//
+//         if ( needRedrawOpponentsStats ) {
+//             redrawOpponentsStats( cur_pt );
+//
+//             needRender = true;
+//         }
+//
+//         for ( const int32_t i : { 0, 1 } ) {
+//             if ( armyInfo[i].needRedraw ) {
+//                 armyInfo[i].ui.redraw( display );
+//                 armyInfo[i].needRedraw = false;
+//
+//                 needRender = true;
+//             }
+//         }
+//
+//         if ( needRedrawControlInfo ) {
+//             assert( attackedArmyControlInfo != nullptr );
+//             attackedArmyControlInfo->Redraw();
+//
+//             needRender = true;
+//         }
+//
+//         if ( needRender ) {
+//             display.render();
+//         }
+//     }
+//
+//     armyInfo[0].ui = {};
+//     armyInfo[1].ui = {};
+//
+//     attackedArmyControlInfo.reset();
+//
+//     return result;
+// }
 
 void Battle::Only::updateHero( ArmyInfo & info, const fheroes2::Point & offset )
 {
@@ -926,17 +922,13 @@ void Battle::Only::updateArmyUI( ArmyUI & ui, Heroes * hero, const fheroes2::Poi
     ui.artifact->SetContent( hero->GetBagArtifacts() );
     ui.artifact->setRenderingOffset( { offset.x + artifactOffsetX[armyId], offset.y + 347 } );
 
-    //Seting randomized monsters for training
+    // Seting randomized monsters for training
     FillRandomTrainingTroops( hero );
-    //hero->GetArmy().GetTroop( 0 )->SetMonster( getRandomMonterId() );
-    //std::cout <<(int) hero->GetArmy().GetTroop( 0 )->GetRandomUnitLevel()<< std::endl;
+    // hero->GetArmy().GetTroop( 0 )->SetMonster( getRandomMonterId() );
+    // std::cout <<(int) hero->GetArmy().GetTroop( 0 )->GetRandomUnitLevel()<< std::endl;
     ////GetRNDSize
-    //hero->GetArmy().GetTroop( 0 )->SetCount( hero->GetArmy().GetTroop( 0 )->GetRNDSize() );
-    //std::cout << (int)hero->GetArmy().GetTroop( 0 )->GetCount() << std::endl;
-
-
-
-
+    // hero->GetArmy().GetTroop( 0 )->SetCount( hero->GetArmy().GetTroop( 0 )->GetRNDSize() );
+    // std::cout << (int)hero->GetArmy().GetTroop( 0 )->GetCount() << std::endl;
 
     ui.army = std::make_unique<ArmyBar>( &hero->GetArmy(), true, false, true );
     ui.army->setTableSize( { 5, 1 } );

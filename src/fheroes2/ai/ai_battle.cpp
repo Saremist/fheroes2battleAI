@@ -38,6 +38,9 @@
 #include <utility>
 #include <vector>
 
+#include <stdio.h>
+
+#include "NN_ai.h"
 #include "artifact.h"
 #include "artifact_info.h"
 #include "battle.h"
@@ -65,9 +68,6 @@
 #include "spell.h"
 #include "spell_info.h"
 #include "spell_storage.h"
-
-#include "NN_ai.h"
-#include <stdio.h>
 
 namespace
 {
@@ -616,18 +616,13 @@ void AI::BattlePlanner::battleBegins()
     _defenderForceNumberOfDead = 0;
 }
 
-
-
-
-
-
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
 {
     // Current unit can be under the influence of the Hypnotize spell
     const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
     const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
-    std::cout << "currentUnit:" << std::endl;
+    /*std::cout << "currentUnit:" << std::endl;
     PrintUnitInfo( currentUnit );
     std::cout << std::endl;
 
@@ -643,66 +638,28 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         assert( enemy != nullptr );
         PrintUnitInfo( *enemy );
     }
-    std::cout << std::endl;
+    std::cout << std::endl;*/
     Battle::Actions plannedActions;
 
-    if ( true && NNAI::isNNControlled( currentUnit.GetColor() ) ) {
-        plannedActions = NNAI::planUnitTurn( arena, currentUnit ); 
+    if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
+        plannedActions = NNAI::planUnitTurn( arena, currentUnit );
     }
     else {
-        plannedActions = planUnitTurn( arena, currentUnit ); 
+        plannedActions = planUnitTurn( arena, currentUnit );
     }
 
-    std::cout << plannedActions << std::endl;
+    // std::cout << plannedActions << std::endl;
 
     // Return immediately if our limit of turns has been exceeded
     if ( isLimitOfTurnsExceeded( arena, actions ) ) {
         return;
     }
 
-
     actions.insert( actions.end(), plannedActions.begin(), plannedActions.end() );
 }
 
 #include <filesystem>
 #include <iostream>
-
-
-//void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
-//{
-//    // Return immediately if our limit of turns has been exceeded
-//    if ( isLimitOfTurnsExceeded( arena, actions ) ) {
-//        return;
-//    }
-//
-//    // Get the model's prediction
-//    torch::Tensor output = model->forward( input );
-//    int predicted_action = output.argmax( 1 ).item<int>();
-//    // Convert the predicted action to a Battle::Command and add it to actions
-//    switch ( predicted_action ) {
-//    case 0:
-//        actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), 0 ); //, /* target cell */
-//        break;
-//    case 1:
-//        actions.emplace_back( Battle::Command::ATTACK, currentUnit.GetUID(), 0, 0, 0, 0 ); //, /* target unit UID */, /* target cell */
-//        break;
-//    case 2:
-//        actions.emplace_back( Battle::Command::SPELLCAST, 0, 0 ); //, /* spell ID */, /* target cell */
-//        break;
-//    case 3:
-//        actions.emplace_back( Battle::Command::RETREAT );
-//        break;
-//    case 4:
-//        actions.emplace_back( Battle::Command::SURRENDER );
-//        break;
-//    default:
-//        actions.emplace_back( Battle::Command::SKIP, currentUnit.GetUID() );
-//        break;
-//    }
-//
-//    std::cout << "Planned actions for unit: " << currentUnit.GetName() << " (" << actions.size() << " actions)" << std::endl;
-//}
-
 
 bool AI::BattlePlanner::isLimitOfTurnsExceeded( const Battle::Arena & arena, Battle::Actions & actions )
 {
@@ -726,7 +683,8 @@ bool AI::BattlePlanner::isLimitOfTurnsExceeded( const Battle::Arena & arena, Bat
         if ( _currentTurnNumber == 0 || currentTurnNumber - _currentTurnNumber != 1 || prevNumbersOfDead != currNumbersOfDead ) {
             prevNumbersOfDead = currNumbersOfDead;
 
-            _numberOfRemainingTurnsWithoutDeaths = MAX_TURNS_WITHOUT_DEATHS;
+            _numberOfRemainingTurnsWithoutDeaths = _numberOfRemainingTurnsWithoutDeaths = MAX_TURNS_WITHOUT_DEATHS;
+            ;
         }
         // No changes in numbers of dead units compared to the previous turn, decrease the counter of the remaining turns
         else {
@@ -1580,7 +1538,6 @@ AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena,
             assert( enemy != nullptr );
 
             const MeleeAttackOutcome outcome = BestAttackOutcome( currentUnit, *enemy, valuesOfAttackPositions );
-
 
             if ( !outcome.canAttackImmediately ) {
                 continue;

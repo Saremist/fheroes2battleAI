@@ -64,22 +64,25 @@ namespace Battle
         // Define the operator<< for Result
         friend std::ostream & operator<<( std::ostream & os, const Result & result )
         {
-            os << "Result:" << std::endl;
-            os << "  Army 1: " << result.army1 << std::endl;
-            os << "  Army 2: " << result.army2 << std::endl;
-            os << "  Experience 1: " << result.exp1 << std::endl;
-            os << "  Experience 2: " << result.exp2 << std::endl;
-            os << "  AIScore 1: " << result.AIScore1 << std::endl;
-            os << "  AIScore 2: " << result.AIScore2 << std::endl;
-            os << "  AIScore Balance: " << result.AIScoreBalance << std::endl;
-            os << "  Killed: " << result.killed << std::endl;
-            os << "  Attacker Wins: " << ( result.AttackerWins() ? "Yes" : "No" ) << std::endl;
-            os << "  Defender Wins: " << ( result.DefenderWins() ? "Yes" : "No" ) << std::endl;
-            os << "  Attacker Result: " << result.AttackerResult() << std::endl;
-            os << "  Defender Result: " << result.DefenderResult() << std::endl;
-            os << "  Experience Attacker: " << result.GetExperienceAttacker() << std::endl;
-            os << "  Experience Defender: " << result.GetExperienceDefender() << std::endl;
+            os << "  AIScore Balance: " << result.AIScoreBalance;
             return os;
+
+            // os << "Result:" << std::endl;
+            // os << "  Army 1: " << result.army1 << std::endl;
+            // os << "  Army 2: " << result.army2 << std::endl;
+            // os << "  Experience 1: " << result.exp1 << std::endl;
+            // os << "  Experience 2: " << result.exp2 << std::endl;
+            // os << "  AIScore 1: " << result.AIScore1 << std::endl;
+            // os << "  AIScore 2: " << result.AIScore2 << std::endl;
+            // os << "  AIScore Balance: " << result.AIScoreBalance << std::endl;
+            // os << "  Killed: " << result.killed << std::endl;
+            // os << "  Attacker Wins: " << ( result.AttackerWins() ? "Yes" : "No" ) << std::endl;
+            // os << "  Defender Wins: " << ( result.DefenderWins() ? "Yes" : "No" ) << std::endl;
+            // os << "  Attacker Result: " << result.AttackerResult() << std::endl;
+            // os << "  Defender Result: " << result.DefenderResult() << std::endl;
+            // os << "  Experience Attacker: " << result.GetExperienceAttacker() << std::endl;
+            // os << "  Experience Defender: " << result.GetExperienceDefender() << std::endl;
+            // return os;
         }
     };
 

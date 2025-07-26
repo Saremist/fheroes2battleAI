@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -40,8 +41,6 @@
 #include "icn.h"
 #include "spell.h"
 #include "spell_storage.h"
-
-#include <ostream>
 
 class Army;
 class Artifact;
@@ -96,7 +95,7 @@ namespace Battle
     {
     public:
         Arena( Army & army1, Army & army2, const int32_t tileIndex, const bool isShowInterface, Rand::DeterministicRandomGenerator & randomGenerator );
-        Arena( const Arena & ) = delete;
+        Arena( const Arena & other );
         Arena( Arena && ) = delete;
 
         ~Arena();
@@ -255,7 +254,6 @@ namespace Battle
             CASTLE_TOP_GATE_TOWER_POS = 40,
             CASTLE_BOTTOM_GATE_TOWER_POS = 62
         };
-
 
     private:
         void UnitTurn( const Units & orderHistory );

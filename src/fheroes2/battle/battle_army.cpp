@@ -291,16 +291,42 @@ uint32_t Battle::Force::GetDeadHitPoints() const
     return res;
 }
 
-float Battle::Force::GetHitPointsRate() const // calculates lost hitpoints/total hitpoints of leftover units
+uint32_t Battle::Force::GetTotalHitPoints() const
 {
-    float res = 0;
-
+    uint32_t res = 0;
     for ( const_iterator it = begin(); it != end(); ++it ) {
         res += static_cast<Monster *>( *it )->GetHitPoints() * ( *it )->GetInitialCount();
     }
-    return (float) 1.0 - this->GetDeadHitPoints() / res;
+    return res;
 }
 
+uint32_t Battle::Force::GetAliveHitPoints() const
+{
+    uint32_t res = 0;
+    for ( const_iterator it = begin(); it != end(); ++it ) {
+        if ( *it == nullptr || !( *it )->isValid() ) {
+            continue;
+        }
+        res += static_cast<Monster *>( *it )->GetHitPoints() * ( *it )->GetInitialCount() - static_cast<Monster *>( *it )->GetHitPoints() * ( *it )->GetDead();
+    }
+    return res;
+}
+
+float Battle::Force::GetHitPointsRate() const // calculates lost hitpoints/total hitpoints of leftover units
+{
+    return (float)1.0 - static_cast<float>( this->GetDeadHitPoints() ) / static_cast<float>( GetTotalHitPoints() );
+}
+
+uint32_t Battle::Force::GetAliveCounts() const
+{
+    uint32_t aliveCount = 0;
+    for ( const Unit * unit : *this ) {
+        if ( unit && unit->isValid() ) {
+            aliveCount += unit->GetInitialCount() - unit->GetDead();
+        }
+    }
+    return aliveCount;
+}
 
 void Battle::Force::SyncArmyCount()
 {

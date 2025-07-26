@@ -133,7 +133,10 @@ namespace Battle
         bool HasMonster( const Monster & ) const;
 
         uint32_t GetDeadHitPoints() const;
+        uint32_t GetTotalHitPoints() const;
+        uint32_t GetAliveHitPoints() const;
         uint32_t GetDeadCounts() const;
+        uint32_t GetAliveCounts() const;
         float GetHitPointsRate() const;
 
         int GetColor() const;
