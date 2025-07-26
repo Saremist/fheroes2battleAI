@@ -9110,6 +9110,7 @@
     <ClInclude Include="libtorch\include\torch\script.h" />
     <ClInclude Include="libtorch\include\xnnpack.h" />
     <ClInclude Include="src\fheroes2\ai\NN_ai.h" />
+    <ClInclude Include="src\fheroes2\game\fheroes2.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\fheroes2\ai\NN_ai.cpp" />
@@ -9132,6 +9133,9 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.9.props" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="VisualStudio\common.props" />
@@ -9152,9 +9156,12 @@
     <ExternalIncludePath>$(ProjectDir)..\libtorch\include;$(ProjectDir)..\libtorch\include\torch\csrc\api\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-SDL2|x64'">
+    <ExternalIncludePath>$(ProjectDir)..\libtorch\release\include;$(ProjectDir)..\libtorch\release\include\torch\csrc\api\include;$(ExternalIncludePath)</ExternalIncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug-SDL2|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)packages\sdl2\include\;$(ProjectDir)libtorch\include;$(ProjectDir)libtorch\include\torch\csrc\api\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\include;$(MSBuildThisFileDirectory)packages\sdl2\include\;$(ProjectDir)libtorch\debug\include;$(ProjectDir)libtorch\debug\include\torch\csrc\api\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>false</ConformanceMode>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
@@ -9162,10 +9169,44 @@
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)packages\sdl2\lib\$(PlatformTarget);$(ProjectDir)libtorch\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>asmjit.lib;c10.lib;c10_cuda.lib;caffe2_nvrtc.lib;cpuinfo.lib;dnnl.lib;fbgemm.lib;fmtd.lib;kineto.lib;libprotobufd.lib;libprotocd.lib;pthreadpool.lib;torch.lib;torch_cpu.lib;torch_cuda.lib;XNNPACK.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)packages\sdl2\lib\$(PlatformTarget);$(ProjectDir)libtorch\debug\lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\lib\x64;C:\Program Files\NVIDIA\CUDNN\v9.11\lib\12.9\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>asmjit.lib;c10.lib;c10_cuda.lib;caffe2_nvrtc.lib;cpuinfo.lib;dnnl.lib;fbgemm.lib;fmtd.lib;kineto.lib;libprotobufd.lib;libprotocd.lib;pthreadpool.lib;torch.lib;torch_cpu.lib;torch_cuda.lib;XNNPACK.lib;cudart.lib;cublas.lib;cublasLt.lib;cudnn.lib;curand.lib;cufft.lib;cusolver.lib;cusparse.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ForceSymbolReferences>
+      </ForceSymbolReferences>
+      <AdditionalOptions>/INCLUDE:"?warp_size@cuda@at@@YAHXZ" %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PostBuildEvent />
+    <CudaCompile>
+      <Include>
+      </Include>
+      <GPUDebugInfo>true</GPUDebugInfo>
+      <GenerateLineInfo>true</GenerateLineInfo>
+    </CudaCompile>
+    <CudaLink>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-SDL2|x64'">
+    <Link>
+      <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)packages\sdl2\lib\$(PlatformTarget);$(ProjectDir)libtorch\release\lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\lib\x64;C:\Program Files\NVIDIA\CUDNN\v9.11\lib\12.9\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>asmjit.lib;c10.lib;c10_cuda.lib;caffe2_nvrtc.lib;cpuinfo.lib;dnnl.lib;fbgemm.lib;fmt.lib;kineto.lib;libprotobuf.lib;libprotoc.lib;pthreadpool.lib;torch.lib;torch_cpu.lib;torch_cuda.lib;XNNPACK.lib;cudart.lib;cublas.lib;cublasLt.lib;cudnn.lib;curand.lib;cufft.lib;cusolver.lib;cusparse.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ForceSymbolReferences>
+      </ForceSymbolReferences>
+      <AdditionalOptions>/INCLUDE:"?warp_size@cuda@at@@YAHXZ" %(AdditionalOptions)</AdditionalOptions>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\include;$(MSBuildThisFileDirectory)packages\sdl2\include\;$(ProjectDir)libtorch\release\include;$(ProjectDir)libtorch\release\include\torch\csrc\api\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ConformanceMode>false</ConformanceMode>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatAngleIncludeAsExternal>true</TreatAngleIncludeAsExternal>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+    </ClCompile>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.9.targets" />
+  </ImportGroup>
 </Project>
