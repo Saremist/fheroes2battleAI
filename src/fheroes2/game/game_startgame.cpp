@@ -189,7 +189,7 @@ namespace
     }
 }
 
-#include "nn_ai.h"
+#include "NN_ai.h"
 
 fheroes2::GameMode Game::StartBattleOnly()
 {

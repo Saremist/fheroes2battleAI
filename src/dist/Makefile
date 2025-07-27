@@ -21,7 +21,16 @@
 TARGET := fheroes2
 
 LIBENGINE := ../engine/libengine.a
-CCFLAGS := $(CCFLAGS) -I../engine
+CCFLAGS := $(CCFLAGS) \
+-I../engine \
+-I../../libtorch/include \
+-I../../libtorch/include/torch/csrc/api/include \
+-D_GLIBCXX_USE_CXX11_ABI=1
+
+# Linker flags
+LDFLAGS := $(LDFLAGS) -L../../libtorch/lib
+LDFLAGS += -Wl,-rpath,$(abspath ../../libtorch/lib)
+
 
 ifndef FHEROES2_WITH_SYSTEM_SMACKER
 LIBENGINE := $(LIBENGINE) ../thirdparty/libsmacker/libsmacker.a

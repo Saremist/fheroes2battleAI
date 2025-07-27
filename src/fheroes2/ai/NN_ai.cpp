@@ -14,9 +14,6 @@
 #include <random>
 #include <tuple>
 
-#include <ATen/cuda/CUDAContext.h>
-#include <ATen/cuda/CUDADevice.h>
-
 #include "battle_arena.h"
 #include "battle_army.h"
 #include "game.h"
@@ -146,7 +143,7 @@ namespace NNAI
         if ( currentUnit.GetCount() == 0 )
             return {};
 
-        std::vector<torch::Tensor> & nn_output = model->forward( input ); // Get the NN output
+        std::vector<torch::Tensor> nn_output = model->forward( input ); // Get the NN output
 
         // Extract highest-probability action per head
         std::vector<int64_t> nn_outputs;

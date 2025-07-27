@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-#include <ATen/cuda/CUDAContext.h>
-#include <ATen/cuda/CUDADevice.h>
 #include <ai_battle.h>
 #include <battle_board.h>
 #include <battle_troop.h>

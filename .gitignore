@@ -102,3 +102,11 @@ libtorch
 
 #obsidian files
 .obsidian
+
+Maps
+Data
+Music
+Anim
+fheroes2
+out/
+build_log.txt

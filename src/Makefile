@@ -35,7 +35,8 @@ CPPFLAGS := $(CPPFLAGS)
 # Flags for the linker
 LDFLAGS := $(LDFLAGS) -pthread
 # Flags for additional libraries
-LDLIBS := $(LDLIBS)
+LDLIBS := $(LDLIBS)# Link against all required libraries
+LDLIBS += -ltorch -ltorch_cpu -lc10 -ltorch_cuda
 
 ifdef FHEROES2_WITH_DEBUG
 CCFLAGS := $(CCFLAGS) -O0 -g
