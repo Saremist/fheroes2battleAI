@@ -665,8 +665,13 @@ int default_main( int argc, char ** argv )
 
 int main( int argc, char ** argv )
 {
+<<<<<<< Updated upstream
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 //    std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
+=======
+    NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCPU : torch::kCPU );
+    std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
+>>>>>>> Stashed changes
     std::cout << "Device: " << NNAI::device << std::endl;
 
     NNAI::initializeGlobalModels();
@@ -677,7 +682,7 @@ int main( int argc, char ** argv )
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 2500, 0.0005, NNAI::device, /*games per epoch = */ 200 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 1500, 0.0005, NNAI::device, /*games per epoch = */ 250 );
     }
 
     NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );

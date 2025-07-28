@@ -30,10 +30,15 @@
 		  xcopy /Y /Q files\lang\*.mo "$(OutDir)files\lang\"
 		  xcopy /Y /S /Q files\soundfonts "$(OutDir)files\soundfonts\"
 
-		  if not exist "$(OutDir)c10.dll" (
-		  xcopy $(ProjectDir)libtorch\lib\*.dll "$(OutDir)"\ /C /Y /Q
+		  if /I "$(Configuration)"=="Debug" (
+			if not exist "$(OutDir)c10.dll" (
+			  xcopy $(ProjectDir)libtorch\debug\lib\*.dll "$(OutDir)"\ /C /Y /Q
+			)
+		  ) else (
+			if not exist "$(OutDir)c10.dll" (
+			  xcopy $(ProjectDir)libtorch\release\lib\*.dll "$(OutDir)"\ /C /Y /Q
+			)
 		  )
-
 
 		  %(Command)</Command>
     </PostBuildEvent>
