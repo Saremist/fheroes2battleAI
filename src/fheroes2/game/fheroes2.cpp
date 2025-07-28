@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <list>
@@ -32,7 +33,6 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <fstream>
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
@@ -538,12 +538,12 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                                            + " Avg Reward: " + std::to_string( epoch_total_reward2 / game_count ) + " | Games Played: " + std::to_string( game_count );
 
                 std::cout << epochSummary << std::endl;
-                std::ofstream log_file("training_log.txt", std::ios::app | std::ios::out);
-                    if ( ! log_file ) {
-                        std::cerr << "Failed to opent training_log.txt for writing. \n";
-                    }
-                        log_file << epochSummary << std::endl;
-                    
+                std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
+                if ( !log_file ) {
+                    std::cerr << "Failed to opent training_log.txt for writing. \n";
+                }
+                log_file << epochSummary << std::endl;
+
                 if ( epoch % 10 == 0 ) {
                     NNAI::saveModel( model1, "model_" + name1 + ".pt" );
                     NNAI::saveModel( model2, "model_" + name2 + ".pt" );
@@ -665,13 +665,11 @@ int default_main( int argc, char ** argv )
 
 int main( int argc, char ** argv )
 {
-<<<<<<< Updated upstream
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
-//    std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
-=======
-    NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCPU : torch::kCPU );
+
+    NNAI::device = torch::kCPU; // Force CPU for now, as CUDA is slower in this environment
+
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
->>>>>>> Stashed changes
     std::cout << "Device: " << NNAI::device << std::endl;
 
     NNAI::initializeGlobalModels();

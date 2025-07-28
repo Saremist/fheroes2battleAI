@@ -79,7 +79,7 @@ namespace AI
         void BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions );
         // When this limit of turns without deaths is exceeded for an attacking AI-controlled hero,
         // the auto battle should be interrupted (one way or another)
-        static const uint32_t MAX_TURNS_WITHOUT_DEATHS = 5;
+        static const uint32_t MAX_TURNS_WITHOUT_DEATHS = 50;
 
     private:
         BattlePlanner() = default;
