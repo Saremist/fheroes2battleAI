@@ -432,6 +432,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         for ( int h = 0; h < 3; ++h )
                             action_batches1.push_back( torch::stack( actions1[h] ).to( device ) );
 
+                        // Truncate to shortest length
                         int64_t T = std::min( { state_batch1.size( 0 ), reward_batch1.size( 0 ), action_batches1[0].size( 0 ) } );
                         state_batch1 = state_batch1.slice( 0, 0, T );
                         reward_batch1 = reward_batch1.slice( 0, 0, T );
@@ -440,28 +441,45 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                         optimizer1.zero_grad();
                         auto logits1 = model1->forward( state_batch1 );
+
                         if ( logits1.size() != 3 || action_batches1.size() != 3 ) {
                             std::cerr << "Warning: Invalid logits or action batches for model1\n";
                             continue;
                         }
 
+                        // === Reward Normalization ===
                         auto reward_mean = reward_batch1.mean().detach();
-                        auto reward_std = torch::clamp( reward_batch1.std().detach(), 1e-8 );
-                        if ( reward_batch1.size( 0 ) <= 1 || reward_std.item<float>() < 1e-8 ) {
-                            reward_std = torch::ones( {}, reward_std.options() ) * 1.0; // or skip normalization
-                        }
-                        auto norm_rewards = ( reward_batch1 - reward_mean ) / reward_std;
+                        auto reward_std = reward_batch1.std().detach();
 
+                        torch::Tensor norm_rewards;
+                        if ( reward_batch1.size( 0 ) <= 1 || reward_std.item<float>() < 1e-6f ) {
+                            norm_rewards = reward_batch1; // Skip normalization
+                        }
+                        else {
+                            norm_rewards = ( reward_batch1 - reward_mean ) / torch::clamp( reward_std, 1e-6 );
+                        }
+
+                        // === Loss with Entropy Bonus ===
                         torch::Tensor loss1 = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
+                        const float entropy_coef = 0.01f;
+
                         for ( int h = 0; h < 3; ++h ) {
                             auto log_prob = torch::nn::functional::log_softmax( logits1[h], 1 );
+                            auto prob = torch::exp( log_prob );
+                            auto entropy = -( prob * log_prob ).sum( 1 ).mean(); // Entropy bonus
+
                             auto selected_log_prob = log_prob.gather( 1, action_batches1[h].unsqueeze( 1 ) );
-                            loss1 -= ( selected_log_prob.squeeze() * norm_rewards ).mean();
+                            auto policy_loss = -( selected_log_prob.squeeze() * norm_rewards ).mean();
+
+                            loss1 += policy_loss - entropy_coef * entropy; // Combine loss with entropy bonus
                         }
 
                         loss1.backward();
                         optimizer1.step();
                         total_loss1 += loss1.cpu().item<double>();
+
+                        std::cout << "Loss1: " << loss1.item<float>() << " | Reward Mean: " << reward_mean.item<float>() << " | Reward Std: " << reward_std.item<float>()
+                                  << std::endl;
                     }
 
                     // === Model 2 Training ===
@@ -473,6 +491,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         for ( int h = 0; h < 3; ++h )
                             action_batches2.push_back( torch::stack( actions2[h] ).to( device ) );
 
+                        // Truncate to shortest length
                         int64_t T = std::min( { state_batch2.size( 0 ), reward_batch2.size( 0 ), action_batches2[0].size( 0 ) } );
                         state_batch2 = state_batch2.slice( 0, 0, T );
                         reward_batch2 = reward_batch2.slice( 0, 0, T );
@@ -481,29 +500,47 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                         optimizer2.zero_grad();
                         auto logits2 = model2->forward( state_batch2 );
+
                         if ( logits2.size() != 3 || action_batches2.size() != 3 ) {
                             std::cerr << "Warning: Invalid logits or action batches for model2\n";
                             continue;
                         }
 
+                        // === Reward Normalization ===
                         auto reward_mean = reward_batch2.mean().detach();
-                        auto reward_std = torch::clamp( reward_batch2.std().detach(), 1e-8 );
+                        auto reward_std = reward_batch2.std().detach();
 
-                        if ( reward_batch2.size( 0 ) <= 1 || reward_std.item<float>() < 1e-8 ) {
-                            reward_std = torch::ones( {}, reward_std.options() ) * 1.0; // or skip normalization
+                        torch::Tensor norm_rewards;
+                        if ( reward_batch2.size( 0 ) <= 1 || reward_std.item<float>() < 1e-6f ) {
+                            norm_rewards = reward_batch2; // Skip normalization
                         }
-                        auto norm_rewards = ( reward_batch2 - reward_mean ) / reward_std;
+                        else {
+                            norm_rewards = ( reward_batch2 - reward_mean ) / torch::clamp( reward_std, 1e-6 );
+                            norm_rewards = torch::clamp( norm_rewards, -10.0, 10.0 ); // Optional clipping
+                        }
 
+                        // === Loss with Entropy Bonus ===
                         torch::Tensor loss2 = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
+                        const float entropy_coef = 0.01f;
+
                         for ( int h = 0; h < 3; ++h ) {
                             auto log_prob = torch::nn::functional::log_softmax( logits2[h], 1 );
+                            auto prob = torch::exp( log_prob );
+                            auto entropy = -( prob * log_prob ).sum( 1 ).mean(); // Entropy bonus
+
                             auto selected_log_prob = log_prob.gather( 1, action_batches2[h].unsqueeze( 1 ) );
-                            loss2 -= ( selected_log_prob.squeeze() * norm_rewards ).mean();
+                            auto policy_loss = -( selected_log_prob.squeeze() * norm_rewards ).mean();
+
+                            loss2 += policy_loss - entropy_coef * entropy; // Combine loss with entropy bonus
                         }
 
                         loss2.backward();
                         optimizer2.step();
                         total_loss2 += loss2.cpu().item<double>();
+
+                        // Optional: debug output
+                        std::cout << "Loss2: " << loss2.item<float>() << " | Reward Mean: " << reward_mean.item<float>() << " | Reward Std: " << reward_std.item<float>()
+                                  << std::endl;
                     }
 
                     ++game_count;
