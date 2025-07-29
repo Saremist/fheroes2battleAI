@@ -477,9 +477,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         loss1.backward();
                         optimizer1.step();
                         total_loss1 += loss1.cpu().item<double>();
-
-                        std::cout << "Loss1: " << loss1.item<float>() << " | Reward Mean: " << reward_mean.item<float>() << " | Reward Std: " << reward_std.item<float>()
-                                  << std::endl;
                     }
 
                     // === Model 2 Training ===
@@ -516,7 +513,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         }
                         else {
                             norm_rewards = ( reward_batch2 - reward_mean ) / torch::clamp( reward_std, 1e-6 );
-                            norm_rewards = torch::clamp( norm_rewards, -10.0, 10.0 ); // Optional clipping
                         }
 
                         // === Loss with Entropy Bonus ===
@@ -533,14 +529,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                             loss2 += policy_loss - entropy_coef * entropy; // Combine loss with entropy bonus
                         }
-
                         loss2.backward();
                         optimizer2.step();
                         total_loss2 += loss2.cpu().item<double>();
-
-                        // Optional: debug output
-                        std::cout << "Loss2: " << loss2.item<float>() << " | Reward Mean: " << reward_mean.item<float>() << " | Reward Std: " << reward_std.item<float>()
-                                  << std::endl;
                     }
 
                     ++game_count;
