@@ -43,7 +43,7 @@ namespace NNAI
     extern int m1turnCount;
     extern int m2turnCount;
 
-    const bool isTraining = false; // Defines if post battle dialog will open or the training loop will continue
+    const bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
     extern const int TrainingLoopsCount;
 
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;

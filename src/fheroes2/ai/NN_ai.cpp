@@ -551,36 +551,34 @@ namespace Battle
         // Only calculate reward if previous values are valid (not first turn)
         if ( *prevEnemyHP != -1 ) {
             reward += 100.0f * ( static_cast<float>( *prevEnemyHP ) - static_cast<float>( currEnemyHP ) ) / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
-            reward -= 100.0f * ( static_cast<float>( *prevAllyHP ) - static_cast<float>( currAllyHP ) ) / static_cast<float>( totalAllyHP ); // Damage taken in percent
+            // reward -= 100.0f * ( static_cast<float>( *prevAllyHP ) - static_cast<float>( currAllyHP ) ) / static_cast<float>( totalAllyHP ); // Damage taken in percent
 
             reward += 25.0f * ( static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits ) );
-            reward -= 25.0f * ( static_cast<float>( *prevAllyUnits ) - static_cast<float>( currAllyUnits ) );
+            // reward -= 25.0f * ( static_cast<float>( *prevAllyUnits ) - static_cast<float>( currAllyUnits ) );
         }
 
-        if ( color == currArena.GetArmy1Color() ) {
-            if ( NNAI::m1turnCount ) {
-                reward -= 0.01f * ( static_cast<float>( NNAI::m1skipCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Penalty for skipping turns
-                // reward += 1.0f * ( static_cast<float>( NNAI::m1CorrectMovesCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Reward for correct moves
-            }
-        }
-        else {
-            if ( NNAI::m2turnCount ) {
-                reward -= 0.01f * ( static_cast<float>( NNAI::m2skipCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Penalty for skipping turns
-                // reward += 1.0f * ( static_cast<float>( NNAI::m2CorrectMovesCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Reward for correct moves
-            }
-        }
+        // if ( color == currArena.GetArmy1Color() ) {
+        //     if ( NNAI::m1turnCount ) {
+        //         //reward -= 0.01f * ( static_cast<float>( NNAI::m1skipCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Penalty for skipping turns
+        //          reward += 1.0f * ( static_cast<float>( NNAI::m1CorrectMovesCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Reward for correct moves
+        //     }
+        // }
+        // else {
+        //     if ( NNAI::m2turnCount ) {
+        //         // reward -= 0.01f * ( static_cast<float>( NNAI::m2skipCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Penalty for skipping turns
+        //         reward += 1.0f * ( static_cast<float>( NNAI::m2CorrectMovesCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Reward for correct moves
+        //     }
+        // }
         {
-            reward += 50.0f
-                      * ( static_cast<float>( currAllyHP ) / static_cast<float>( totalAllyHP ) - static_cast<float>( currEnemyHP ) / static_cast<float>( totalEnemyHP ) );
-            // reward for dominating the battle
+            // reward += 50.0f
+            //           * ( static_cast<float>( currAllyHP ) / static_cast<float>( totalAllyHP ) - static_cast<float>( currEnemyHP ) / static_cast<float>( totalEnemyHP )
+            //           );
+            //  reward for dominating the battle
         }
-        if ( currEnemyHP <= 1e-8 ) {
-            reward += 50.0f; // Win condition
+        if ( currEnemyHP <= 10 ) {
+            std::cout << currEnemyHP << " / " << totalEnemyHP << std::endl;
+            reward += 500.0f; // Win condition
             std::cout << "WIN!!!" << std::endl;
-        }
-        else if ( currAllyHP <= 1e-8 ) {
-            reward -= 50.0f; // Lose condition
-            std::cout << "LOSS!!!" << std::endl;
         }
 
         // Update previous values for next turn
