@@ -525,6 +525,9 @@ namespace Battle
     {
         float reward = 0.0f;
 
+        if ( !NNAI::isTraining )
+            std::cout << std::endl << "[DEBUG] calculateReward: color=" << color << std::endl;
+
         // Select which previous values to use
         int *prevEnemyHP, *prevAllyHP, *prevEnemyUnits, *prevAllyUnits;
         if ( color == currArena.GetArmy1Color() ) {
@@ -548,37 +551,32 @@ namespace Battle
         int currEnemyUnits = currArena.getEnemyForce( color ).GetAliveCounts();
         int currAllyUnits = currArena.getForce( color ).GetAliveCounts();
 
+        if ( !NNAI::isTraining )
+            std::cout << "[DEBUG] Current: EnemyHP=" << currEnemyHP << "/" << totalEnemyHP << ", AllyHP=" << currAllyHP << "/" << totalAllyHP
+                      << ", EnemyUnits=" << currEnemyUnits << ", AllyUnits=" << currAllyUnits << std::endl;
+
+        if ( !NNAI::isTraining )
+            std::cout << "[DEBUG] Previous: EnemyHP=" << *prevEnemyHP << ", AllyHP=" << *prevAllyHP << ", EnemyUnits=" << *prevEnemyUnits
+                      << ", AllyUnits=" << *prevAllyUnits << std::endl;
+
         // Only calculate reward if previous values are valid (not first turn)
         if ( *prevEnemyHP != -1 ) {
-            reward += 100.0f * ( static_cast<float>( *prevEnemyHP ) - static_cast<float>( currEnemyHP ) ) / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
-            // reward -= 100.0f * ( static_cast<float>( *prevAllyHP ) - static_cast<float>( currAllyHP ) ) / static_cast<float>( totalAllyHP ); // Damage taken in percent
+            float deltaEnemyHP = static_cast<float>( *prevEnemyHP ) - static_cast<float>( currEnemyHP );
+            float deltaEnemyUnits = static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits );
+            reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
+            reward += 25.0f * deltaEnemyUnits;
 
-            reward += 25.0f * ( static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits ) );
-            // reward -= 25.0f * ( static_cast<float>( *prevAllyUnits ) - static_cast<float>( currAllyUnits ) );
+            if ( !NNAI::isTraining )
+                std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", EnemyUnits=" << deltaEnemyUnits << ", PartialReward=" << reward << std::endl;
         }
 
-        // if ( color == currArena.GetArmy1Color() ) {
-        //     if ( NNAI::m1turnCount ) {
-        //         //reward -= 0.01f * ( static_cast<float>( NNAI::m1skipCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Penalty for skipping turns
-        //          reward += 1.0f * ( static_cast<float>( NNAI::m1CorrectMovesCount ) / static_cast<float>( NNAI::m1turnCount ) ); // Reward for correct moves
-        //     }
-        // }
-        // else {
-        //     if ( NNAI::m2turnCount ) {
-        //         // reward -= 0.01f * ( static_cast<float>( NNAI::m2skipCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Penalty for skipping turns
-        //         reward += 1.0f * ( static_cast<float>( NNAI::m2CorrectMovesCount ) / static_cast<float>( NNAI::m2turnCount ) ); // Reward for correct moves
-        //     }
-        // }
-        {
-            // reward += 50.0f
-            //           * ( static_cast<float>( currAllyHP ) / static_cast<float>( totalAllyHP ) - static_cast<float>( currEnemyHP ) / static_cast<float>( totalEnemyHP )
-            //           );
-            //  reward for dominating the battle
-        }
+        // (Optional) Uncommented reward shaping for correct moves/skips can be logged here if re-enabled
+
+        // Win condition
         if ( currEnemyHP <= 10 ) {
-            std::cout << currEnemyHP << " / " << totalEnemyHP << std::endl;
-            reward += 500.0f; // Win condition
-            std::cout << "WIN!!!" << std::endl;
+            if ( !NNAI::isTraining )
+                std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
+            reward += 500.0f;
         }
 
         // Update previous values for next turn
@@ -587,7 +585,8 @@ namespace Battle
         *prevEnemyUnits = currEnemyUnits;
         *prevAllyUnits = currAllyUnits;
 
-        // std::cout << "Reward for color: " << color << " is: " << reward << std::endl;
+        if ( !NNAI::isTraining )
+            std::cout << "[DEBUG] Final reward for color " << color << ": " << reward << std::endl;
 
         return reward;
     }

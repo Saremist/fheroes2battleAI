@@ -516,8 +516,15 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
 
                 _interface->HumanTurn( *_currentUnit, actions );
             }
+        }
+
+        const uint32_t newSeed = std::accumulate( actions.cbegin(), actions.cend(), _randomGenerator.GetSeed(),
+                                                  []( const uint32_t seed, const Command & cmd ) { return cmd.updateSeed( seed ); } );
+        _randomGenerator.UpdateSeed( newSeed );
+
+        while ( !actions.empty() ) {
+            ApplyAction( actions.front() );
             if ( NNAI::isTraining ) {
-                // Calculate and store reward for both
                 if ( _currentUnit->GetArmyColor() == _army1->GetColor() ) {
                     float reward1 = Battle::calculateReward( *this, this->GetArmy1Color() );
                     NNAI::g_rewards1->push_back( torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ) );
@@ -527,14 +534,6 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
                     NNAI::g_rewards2->push_back( torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ) );
                 }
             }
-        }
-
-        const uint32_t newSeed = std::accumulate( actions.cbegin(), actions.cend(), _randomGenerator.GetSeed(),
-                                                  []( const uint32_t seed, const Command & cmd ) { return cmd.updateSeed( seed ); } );
-        _randomGenerator.UpdateSeed( newSeed );
-
-        while ( !actions.empty() ) {
-            ApplyAction( actions.front() );
             actions.pop_front();
 
             board.removeDeadUnits();
@@ -594,7 +593,6 @@ void Battle::Arena::Turns()
         while ( BattleValid() ) {
             // We can get the nullptr here if there are no units left waiting for their turn
             _currentUnit = GetCurrentUnit( *_army1, *_army2, GetOppositeColor( _lastActiveUnitArmyColor ) );
-
             if ( _orderOfUnits ) {
                 // Add unit to the history
                 if ( _currentUnit ) {
