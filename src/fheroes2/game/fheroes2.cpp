@@ -600,7 +600,7 @@ int main( int argc, char ** argv )
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 2500, 0.0005, NNAI::device, /*games per epoch = */ 250 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 4000, 0.0005, NNAI::device, /*games per epoch = */ 250 );
     }
 
     NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );
