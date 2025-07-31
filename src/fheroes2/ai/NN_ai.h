@@ -43,7 +43,7 @@ namespace NNAI
     extern int m1turnCount;
     extern int m2turnCount;
 
-    const bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
+    extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
     extern const int TrainingLoopsCount;
 
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
@@ -60,11 +60,11 @@ namespace NNAI
         torch::nn::Linear position_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (position index 0-98)
         torch::nn::Linear direction_head{ nullptr }; // For ATTACK (0-6 directions)
 
-        BattleLSTMImpl( int64_t input_size = 15, int64_t hidden_size = 256, int64_t num_layers = 2 )
+        BattleLSTMImpl( int64_t input_size = 17, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_head( hidden_size, 99 )
-            , direction_head( hidden_size, 6 )
+            , direction_head( hidden_size, 7 )
         {
             register_module( "lstm_layer", lstm_layer );
             register_module( "action_type_head", action_type_head );
@@ -147,6 +147,10 @@ namespace NNAI
     int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
 
     bool isNNControlled( int color ); // TODO MW
+
+    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+                        const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
+                        float & epoch_total_reward, torch::Device device, int model_id, int game_index );
 }
 
 void PrintUnitInfo( const Battle::Unit & unit );

@@ -38,6 +38,8 @@ namespace NNAI
     std::vector<std::vector<torch::Tensor>> * g_actions2 = nullptr;
     std::vector<torch::Tensor> * g_rewards2 = nullptr;
 
+    bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
+
     const int TrainingLoopsCount = 1;
 
     int m1skipCount = 0;
@@ -65,9 +67,7 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 15;
-        int64_t hidden_size = 256;
-        int64_t num_layers = 2;
+        int64_t input_size = 17, hidden_size = 128, num_layers = 1;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
@@ -317,6 +317,8 @@ namespace NNAI
         features.push_back( unit.GetLuck() ); // Luck
         features.push_back( unit.GetColor() ); // Ally or enemy color
         features.push_back( normalize( unit.GetPosition().GetHead()->GetIndex(), 0, 100 ) ); // Position (normalized by battlefield size)
+        unit.Modes( Battle::TR_MOVED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Moved this turn
+        unit.Modes( Battle::TR_RESPONDED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Responded this turn
 
         return features;
     }
@@ -450,7 +452,79 @@ namespace NNAI
         return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second );
     }
 
-}
+    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+                        const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
+                        float & epoch_total_reward, torch::Device device, int model_id, int game_index )
+    {
+        if ( states.empty() || rewards.empty() || actions[0].empty() ) {
+            /*std::cerr << "Warning: Skipping model" << model_id << " training for game " << game_index << std::endl;
+            if ( states.empty() )
+                std::cerr << "[DEBUG] states" << model_id << " is empty\n";
+            if ( rewards.empty() )
+                std::cerr << "[DEBUG] rewards" << model_id << " is empty\n";
+            if ( actions[0].empty() )
+                std::cerr << "[DEBUG] actions" << model_id << "[0] is empty\n";*/
+            return;
+        }
+
+        torch::Tensor state_batch = torch::stack( states ).to( device );
+        torch::Tensor reward_batch = torch::stack( rewards ).to( device ).view( { -1 } );
+
+        std::vector<torch::Tensor> action_batches;
+        for ( int h = 0; h < 3; ++h )
+            action_batches.push_back( torch::stack( actions[h] ).to( device ) );
+
+        int64_t T = std::min( { state_batch.size( 0 ), reward_batch.size( 0 ), action_batches[0].size( 0 ) } );
+        state_batch = state_batch.slice( 0, 0, T );
+        reward_batch = reward_batch.slice( 0, 0, T );
+        for ( int h = 0; h < 3; ++h )
+            action_batches[h] = action_batches[h].slice( 0, 0, T );
+
+        optimizer.zero_grad();
+        auto logits = model->forward( state_batch );
+
+        if ( logits.size() != 3 || action_batches.size() != 3 ) {
+            std::cerr << "Warning: Invalid logits or action batches for model" << model_id << "\n";
+            return;
+        }
+
+        auto reward_mean = reward_batch.mean().detach();
+        auto reward_std = reward_batch.std( /*unbiased=*/false ).detach();
+
+        torch::Tensor norm_rewards;
+        if ( reward_batch.size( 0 ) <= 1 || reward_std.item<float>() < 1e-6f ) {
+            norm_rewards = reward_batch;
+        }
+        else {
+            norm_rewards = ( reward_batch - reward_mean ) / torch::clamp( reward_std, 1e-6 );
+        }
+
+        torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
+        const float entropy_coef = 0.01f;
+
+        for ( int h = 0; h < 3; ++h ) {
+            auto log_prob = torch::nn::functional::log_softmax( logits[h], 1 );
+            auto prob = torch::exp( log_prob );
+            auto entropy = -( prob * log_prob ).sum( 1 ).mean();
+
+            auto selected_log_prob = log_prob.gather( 1, action_batches[h].unsqueeze( 1 ) );
+            auto policy_loss = -( selected_log_prob.squeeze() * norm_rewards ).mean();
+
+            loss += policy_loss - entropy_coef * entropy;
+        }
+
+        loss.backward();
+        optimizer.step();
+
+        total_loss += loss.cpu().item<double>();
+
+        float reward_sum = 0.0f;
+        for ( const auto & r : rewards )
+            reward_sum += r.cpu().item<float>();
+        epoch_total_reward += reward_sum;
+    }
+
+} // NNAI
 
 void PrintUnitInfo( const Battle::Unit & unit )
 {
