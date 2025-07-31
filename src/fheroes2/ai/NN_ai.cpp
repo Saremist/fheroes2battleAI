@@ -653,7 +653,6 @@ namespace Battle
             float deltaEnemyHP = static_cast<float>( *prevEnemyHP ) - static_cast<float>( currEnemyHP );
             float deltaEnemyUnits = static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits );
             reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
-            reward += 25.0f * deltaEnemyUnits;
             if ( !NNAI::skipDebugLog )
                 std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", EnemyUnits=" << deltaEnemyUnits << ", PartialReward=" << reward << std::endl;
         }
