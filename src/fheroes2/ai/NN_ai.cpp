@@ -573,9 +573,9 @@ namespace Battle
         // (Optional) Uncommented reward shaping for correct moves/skips can be logged here if re-enabled
 
         // Win condition
-        if ( currEnemyHP <= 10 ) {
-            if ( !NNAI::isTraining )
-                std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
+        if ( currEnemyHP == 0 ) {
+            // if ( !NNAI::isTraining )
+            std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
             reward += 500.0f;
         }
 
