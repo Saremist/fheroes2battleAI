@@ -39,6 +39,7 @@ namespace NNAI
     std::vector<torch::Tensor> * g_rewards2 = nullptr;
 
     bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
+    bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
 
     const int TrainingLoopsCount = 1;
 
@@ -523,6 +524,20 @@ namespace NNAI
             reward_sum += r.cpu().item<float>();
         epoch_total_reward += reward_sum;
     }
+    void resetGameRewardStats( Battle::Arena & arena )
+    {
+        int color = arena.GetArmy1Color();
+        prevEnemyHP1 = arena.getEnemyForce( color ).GetAliveHitPoints();
+        prevAllyHP1 = arena.getForce( color ).GetAliveHitPoints();
+        prevEnemyUnits1 = arena.getEnemyForce( color ).GetAliveCounts();
+        prevAllyUnits1 = arena.getForce( color ).GetAliveCounts();
+
+        color = arena.GetArmy2Color();
+        prevEnemyHP2 = arena.getEnemyForce( color ).GetAliveHitPoints();
+        prevAllyHP2 = arena.getForce( color ).GetAliveHitPoints();
+        prevEnemyUnits2 = arena.getEnemyForce( color ).GetAliveCounts();
+        prevAllyUnits2 = arena.getForce( color ).GetAliveCounts();
+    }
 
 } // NNAI
 
@@ -599,7 +614,7 @@ namespace Battle
     {
         float reward = 0.0f;
 
-        if ( !NNAI::isTraining )
+        if ( !NNAI::skipDebugLog )
             std::cout << std::endl << "[DEBUG] calculateReward: color=" << color << std::endl;
 
         // Select which previous values to use
@@ -625,11 +640,11 @@ namespace Battle
         int currEnemyUnits = currArena.getEnemyForce( color ).GetAliveCounts();
         int currAllyUnits = currArena.getForce( color ).GetAliveCounts();
 
-        if ( !NNAI::isTraining )
+        if ( !NNAI::skipDebugLog )
             std::cout << "[DEBUG] Current: EnemyHP=" << currEnemyHP << "/" << totalEnemyHP << ", AllyHP=" << currAllyHP << "/" << totalAllyHP
                       << ", EnemyUnits=" << currEnemyUnits << ", AllyUnits=" << currAllyUnits << std::endl;
 
-        if ( !NNAI::isTraining )
+        if ( !NNAI::skipDebugLog )
             std::cout << "[DEBUG] Previous: EnemyHP=" << *prevEnemyHP << ", AllyHP=" << *prevAllyHP << ", EnemyUnits=" << *prevEnemyUnits
                       << ", AllyUnits=" << *prevAllyUnits << std::endl;
 
@@ -639,8 +654,7 @@ namespace Battle
             float deltaEnemyUnits = static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits );
             reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
             reward += 25.0f * deltaEnemyUnits;
-
-            if ( !NNAI::isTraining )
+            if ( !NNAI::skipDebugLog )
                 std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", EnemyUnits=" << deltaEnemyUnits << ", PartialReward=" << reward << std::endl;
         }
 
@@ -648,8 +662,8 @@ namespace Battle
 
         // Win condition
         if ( currEnemyHP == 0 ) {
-            // if ( !NNAI::isTraining )
-            std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
+            if ( !NNAI::skipDebugLog )
+                std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
             reward += 500.0f;
         }
 
@@ -659,7 +673,7 @@ namespace Battle
         *prevEnemyUnits = currEnemyUnits;
         *prevAllyUnits = currAllyUnits;
 
-        if ( !NNAI::isTraining )
+        if ( !NNAI::skipDebugLog )
             std::cout << "[DEBUG] Final reward for color " << color << ": " << reward << std::endl;
 
         return reward;

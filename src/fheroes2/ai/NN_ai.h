@@ -44,6 +44,7 @@ namespace NNAI
     extern int m2turnCount;
 
     extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
+    extern bool skipDebugLog; // Defines if post battle dialog will open or the training loop will continue
     extern const int TrainingLoopsCount;
 
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
@@ -151,7 +152,8 @@ namespace NNAI
     void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id, int game_index );
-}
+    void resetGameRewardStats( Battle::Arena & arena );
+} // NNAI
 
 void PrintUnitInfo( const Battle::Unit & unit );
 

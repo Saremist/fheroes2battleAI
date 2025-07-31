@@ -378,18 +378,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 int game_count = 0;
                 float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0; // Total rewards for this epoch
 
-                for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) { // C
-                    int copy_argc = argc;
-                    std::vector<std::string> argv_strings( argc );
-                    for ( int i = 0; i < argc; ++i ) {
-                        argv_strings[i] = argv[i];
-                    }
-                    std::vector<char *> copy_argv_vec( argc );
-                    for ( int i = 0; i < argc; ++i ) {
-                        copy_argv_vec[i] = argv_strings[i].data();
-                    }
-                    char ** copy_argv = copy_argv_vec.data();
-
+                for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
                     // === Data containers for the current game ===
                     std::vector<torch::Tensor> states1, states2;
                     std::vector<std::vector<torch::Tensor>> actions1( 3 ), actions2( 3 );
@@ -584,10 +573,15 @@ int main( int argc, char ** argv )
     std::cout << "Enable Neural Network training mode? (y/n): ";
     char train_input = 'n';
     std::cin >> train_input;
+    // Prompt user for debug logs skiping
+    std::cout << "Skip Debug log? (y/n): ";
+    char debug_input = 'n';
+    std::cin >> debug_input;
 
     // Set isTraining based on user input
     // Note: isTraining must be non-const and not constexpr in NN_ai.h for this to work!
     NNAI::isTraining = ( train_input == 'y' || train_input == 'Y' );
+    NNAI::skipDebugLog = ( debug_input == 'y' || debug_input == 'Y' );
 
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 

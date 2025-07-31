@@ -9110,7 +9110,6 @@
     <ClInclude Include="libtorch\include\torch\script.h" />
     <ClInclude Include="libtorch\include\xnnpack.h" />
     <ClInclude Include="src\fheroes2\ai\NN_ai.h" />
-    <ClInclude Include="src\fheroes2\game\fheroes2.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\fheroes2\ai\NN_ai.cpp" />
