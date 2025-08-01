@@ -68,7 +68,7 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 17, hidden_size = 128, num_layers = 1;
+        int64_t input_size = 17, hidden_size = 256, num_layers = 2;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
