@@ -61,7 +61,7 @@ namespace NNAI
         torch::nn::Linear position_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (position index 0-98)
         torch::nn::Linear direction_head{ nullptr }; // For ATTACK (0-6 directions)
 
-        BattleLSTMImpl( int64_t input_size = 17, int64_t hidden_size = 256, int64_t num_layers = 2 )
+        BattleLSTMImpl( int64_t input_size = 17, int64_t hidden_size = 512, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_head( hidden_size, 99 )
