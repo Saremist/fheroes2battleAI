@@ -68,7 +68,7 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 17, hidden_size = 256, num_layers = 2;
+        int64_t input_size = 17, hidden_size = 512, num_layers = 1;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
@@ -674,6 +674,9 @@ namespace Battle
 
         if ( !NNAI::skipDebugLog )
             std::cout << "[DEBUG] Final reward for color " << color << ": " << reward << std::endl;
+
+        if ( reward < 0.f )
+            return 0.f;
 
         return reward;
     }
