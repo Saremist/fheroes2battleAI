@@ -625,7 +625,7 @@ namespace Battle
 
         // Win condition
         if ( currEnemyHP == 0 ) {
-            reward += 1e6;
+            reward += 1000;
             if ( !NNAI::skipDebugLog )
                 std::cout << "[DEBUG] Win detected: Enemy defeated." << std::endl;
             if ( color == currArena.GetArmy1Color() ) {
