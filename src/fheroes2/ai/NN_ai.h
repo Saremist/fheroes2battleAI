@@ -36,16 +36,11 @@ namespace NNAI
     extern std::vector<std::vector<torch::Tensor>> * g_actions2;
     extern std::vector<torch::Tensor> * g_rewards2;
 
-    extern int m1skipCount;
-    extern int m2skipCount;
-    extern int m1CorrectMovesCount;
-    extern int m2CorrectMovesCount;
-    extern int m1turnCount;
-    extern int m2turnCount;
+    extern int m1WinCount;
+    extern int m2WinCount;
 
     extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
     extern bool skipDebugLog; // Defines if post battle dialog will open or the training loop will continue
-    extern const int TrainingLoopsCount;
 
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
     extern int prevEnemyHP2, prevAllyHP2, prevEnemyUnits2, prevAllyUnits2;
@@ -61,7 +56,7 @@ namespace NNAI
         torch::nn::Linear position_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (position index 0-98)
         torch::nn::Linear direction_head{ nullptr }; // For ATTACK (0-6 directions)
 
-        BattleLSTMImpl( int64_t input_size = 17, int64_t hidden_size = 512, int64_t num_layers = 1 )
+        BattleLSTMImpl( int64_t input_size = 17, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_head( hidden_size, 99 )
