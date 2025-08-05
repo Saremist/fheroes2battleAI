@@ -598,7 +598,7 @@ int main( int argc, char ** argv )
         auto model1 = *NNAI::g_model_blue;
         auto model2 = *NNAI::g_model_red;
 
-        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
+        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 10; // Set the max turns without deaths for the planner
 
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
