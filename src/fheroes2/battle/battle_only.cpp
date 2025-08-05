@@ -153,7 +153,7 @@ void FillRandomTrainingTroops( Heroes * hero )
     std::random_device rd;
     std::mt19937 gen( rd() );
     std::discrete_distribution<> dist( { 1, 3, 6, 3, 1 } ); // Centered around 3
-    int numTroops = dist( gen ) + 1; // Gives 1 to 5, centered on 3
+    int numTroops = dist( gen ) + 1; // Gives 2 to 5, centered on 3
 
     for ( int i = 0; i < 5; ++i ) {
         auto troop = army.GetTroop( i );
@@ -164,7 +164,7 @@ void FillRandomTrainingTroops( Heroes * hero )
             int monsterId = getRandomMonterId();
             troop->SetMonster( monsterId );
             Monster::LevelType level = troop->GetRandomUnitLevel();
-            troop->SetCount( troop->GetRNDSize() );
+            troop->SetCount( troop->GetRNDSize() * ( 5 - int( level ) ) ); // redistributed monstercount for more balanced gameplay
 
             // std::cout << "Position: " << i << ", Monster ID: " << monsterId << ", Level: " << static_cast<int>( level ) << ", Count: " << troop->GetCount() <<
             // std::endl; // raw output for debugging

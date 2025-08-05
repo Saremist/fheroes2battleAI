@@ -27,9 +27,6 @@ namespace NNAI
     std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
     std::shared_ptr<BattleLSTM> g_model_green = nullptr;
     std::shared_ptr<BattleLSTM> g_model_red = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_yellow = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_orange = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_purple = nullptr;
 
     std::vector<torch::Tensor> * g_states1 = nullptr;
     std::vector<std::vector<torch::Tensor>> * g_actions1 = nullptr;
@@ -41,14 +38,8 @@ namespace NNAI
     bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
     bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
 
-    const int TrainingLoopsCount = 1;
-
-    int m1skipCount = 0;
-    int m1CorrectMovesCount = 0;
-    int m1turnCount = 0;
-    int m2skipCount = 0;
-    int m2CorrectMovesCount = 0;
-    int m2turnCount = 0;
+    int m1WinCount = 0;
+    int m2WinCount = 0;
 
     torch::Device device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
@@ -61,14 +52,11 @@ namespace NNAI
         loadModel( NNAI::g_model_blue, "model_blue.pt" );
         loadModel( NNAI::g_model_green, "model_green.pt" );
         loadModel( NNAI::g_model_red, "model_red.pt" );
-        // loadModel( NNAI::g_model_yellow, "model_yellow.pt" );
-        // loadModel( NNAI::g_model_orange, "model_orange.pt" );
-        // loadModel( NNAI::g_model_purple, "model_purple.pt" );
     }
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 17, hidden_size = 512, num_layers = 1;
+        int64_t input_size = 17, hidden_size = 128, num_layers = 1;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
@@ -267,25 +255,6 @@ namespace NNAI
             // Unknown command, fallback to SKIP
             actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
             break;
-        }
-
-        if ( currentUnit.GetColor() == 0x01 ) { // separeate skip counts for models to penalise idling
-            if ( actionType == 3 ) {
-                m1skipCount++; // Penalty normalised
-            }
-            else {
-                m1CorrectMovesCount++;
-            }
-            m1turnCount++;
-        }
-        else {
-            if ( actionType == 3 ) {
-                m2skipCount++;
-            }
-            else {
-                m2CorrectMovesCount++;
-            }
-            m2turnCount++;
         }
 
         return actions;
@@ -615,68 +584,72 @@ namespace Battle
         float reward = 0.0f;
 
         if ( !NNAI::skipDebugLog )
-            std::cout << std::endl << "[DEBUG] calculateReward: color=" << color << std::endl;
+            std::cout << "\n[DEBUG] calculateReward: color=" << color << std::endl;
 
-        // Select which previous values to use
-        int *prevEnemyHP, *prevAllyHP, *prevEnemyUnits, *prevAllyUnits;
+        // Select previous values
+        int * prevEnemyHP;
+        int * prevEnemyUnits;
         if ( color == currArena.GetArmy1Color() ) {
             prevEnemyHP = &NNAI::prevEnemyHP1;
-            prevAllyHP = &NNAI::prevAllyHP1;
             prevEnemyUnits = &NNAI::prevEnemyUnits1;
-            prevAllyUnits = &NNAI::prevAllyUnits1;
         }
         else {
             prevEnemyHP = &NNAI::prevEnemyHP2;
-            prevAllyHP = &NNAI::prevAllyHP2;
             prevEnemyUnits = &NNAI::prevEnemyUnits2;
-            prevAllyUnits = &NNAI::prevAllyUnits2;
         }
 
         // Get current values
         int currEnemyHP = currArena.getEnemyForce( color ).GetAliveHitPoints();
         int totalEnemyHP = currArena.getEnemyForce( color ).GetTotalHitPoints();
-        int currAllyHP = currArena.getForce( color ).GetAliveHitPoints();
-        int totalAllyHP = currArena.getForce( color ).GetTotalHitPoints();
         int currEnemyUnits = currArena.getEnemyForce( color ).GetAliveCounts();
+        int currAllyHP = currArena.getForce( color ).GetAliveHitPoints();
         int currAllyUnits = currArena.getForce( color ).GetAliveCounts();
 
-        if ( !NNAI::skipDebugLog )
-            std::cout << "[DEBUG] Current: EnemyHP=" << currEnemyHP << "/" << totalEnemyHP << ", AllyHP=" << currAllyHP << "/" << totalAllyHP
-                      << ", EnemyUnits=" << currEnemyUnits << ", AllyUnits=" << currAllyUnits << std::endl;
+        if ( !NNAI::skipDebugLog ) {
+            std::cout << "[DEBUG] Current: EnemyHP=" << currEnemyHP << ", AllyHP=" << currAllyHP << ", EnemyUnits=" << currEnemyUnits << ", AllyUnits=" << currAllyUnits
+                      << std::endl;
 
-        if ( !NNAI::skipDebugLog )
-            std::cout << "[DEBUG] Previous: EnemyHP=" << *prevEnemyHP << ", AllyHP=" << *prevAllyHP << ", EnemyUnits=" << *prevEnemyUnits
-                      << ", AllyUnits=" << *prevAllyUnits << std::endl;
-
-        // Only calculate reward if previous values are valid (not first turn)
-        if ( *prevEnemyHP != -1 ) {
-            float deltaEnemyHP = static_cast<float>( *prevEnemyHP ) - static_cast<float>( currEnemyHP );
-            float deltaEnemyUnits = static_cast<float>( *prevEnemyUnits ) - static_cast<float>( currEnemyUnits );
-            reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
-            if ( !NNAI::skipDebugLog )
-                std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", EnemyUnits=" << deltaEnemyUnits << ", PartialReward=" << reward << std::endl;
+            std::cout << "[DEBUG] Previous: EnemyHP=" << *prevEnemyHP << ", EnemyUnits=" << *prevEnemyUnits << std::endl;
         }
 
-        // (Optional) Uncommented reward shaping for correct moves/skips can be logged here if re-enabled
+        // Only calculate reward if not first turn
+        if ( *prevEnemyHP != -1 ) {
+            float deltaEnemyHP = static_cast<float>( *prevEnemyHP - currEnemyHP );
+            reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
+
+            if ( !NNAI::skipDebugLog )
+                std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", PartialReward=" << reward << std::endl;
+        }
+
+        reward = std::max( reward, 0.0f );
 
         // Win condition
         if ( currEnemyHP == 0 ) {
+            reward += 1e6;
             if ( !NNAI::skipDebugLog )
-                std::cout << "[DEBUG] Win detected: currEnemyHP=" << currEnemyHP << " / " << totalEnemyHP << std::endl;
-            reward += 500.0f;
+                std::cout << "[DEBUG] Win detected: Enemy defeated." << std::endl;
+            if ( color == currArena.GetArmy1Color() ) {
+                NNAI::m1WinCount++;
+            }
+            else {
+                NNAI::m2WinCount++;
+            }
         }
 
-        // Update previous values for next turn
+        // Update for next turn
         *prevEnemyHP = currEnemyHP;
-        *prevAllyHP = currAllyHP;
         *prevEnemyUnits = currEnemyUnits;
-        *prevAllyUnits = currAllyUnits;
+        if ( color == currArena.GetArmy1Color() ) {
+            NNAI::prevAllyHP1 = currAllyHP;
+            NNAI::prevAllyUnits1 = currAllyUnits;
+        }
+        else {
+            NNAI::prevAllyHP2 = currAllyHP;
+            NNAI::prevAllyUnits2 = currAllyUnits;
+        }
 
         if ( !NNAI::skipDebugLog )
             std::cout << "[DEBUG] Final reward for color " << color << ": " << reward << std::endl;
-
-        if ( reward < 0.f )
-            return 0.f;
 
         return reward;
     }

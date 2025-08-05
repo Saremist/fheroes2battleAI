@@ -342,12 +342,6 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
 
         NNAI::resetGameRewardStats( arena );
         while ( arena.BattleValid() ) {
-            NNAI::m1skipCount = 0;
-            NNAI::m2skipCount = 0;
-            NNAI::m1turnCount = 0;
-            NNAI::m2turnCount = 0;
-            NNAI::m1CorrectMovesCount = 0;
-            NNAI::m2CorrectMovesCount = 0;
             arena.Turns();
         }
 

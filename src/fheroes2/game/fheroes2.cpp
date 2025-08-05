@@ -356,6 +356,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
             double total_elapsed_seconds = 0.0;
 
             for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
+                NNAI::m1WinCount = 0;
+                NNAI::m2WinCount = 0;
                 auto epoch_start = std::chrono::steady_clock::now(); // CHRONO
 
                 auto selection = NNAI::SelectRandomModels();
@@ -438,8 +440,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                                            + " | GPS: " + std::to_string( games_per_second ) + " | " + name1
                                            + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss1 / game_count : 0.0 ) + " | " + name2
                                            + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss2 / game_count : 0.0 ) + " | " + name1
-                                           + " Avg Reward: " + std::to_string( epoch_total_reward1 / game_count ) + " | " + name2
-                                           + " Avg Reward: " + std::to_string( epoch_total_reward2 / game_count ) + " | Games Played: " + std::to_string( game_count );
+                                           + " Avg Reward: " + std::to_string( epoch_total_reward1 / game_count ) + " | " + name2 + " Avg Reward: "
+                                           + std::to_string( epoch_total_reward2 / game_count ) + " | " + name1 + " Games Won: " + std::to_string( NNAI::m1WinCount )
+                                           + " | " + name2 + " Games Won: " + std::to_string( NNAI::m2WinCount ) + " | Games Played: " + std::to_string( game_count );
 
                 std::cout << epochSummary << std::endl;
                 std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
@@ -585,7 +588,7 @@ int main( int argc, char ** argv )
 
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
-    NNAI::device = torch::kCPU; // Force CPU for now, as CUDA is slower in this environment
+    // NNAI::device = torch::kCPU; // Force CPU for now, as CUDA is slower in this environment
 
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
