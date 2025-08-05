@@ -11688,15 +11688,3 @@ Epoch 3563/4000 (89%) | Time: 00:00:17 | ETA: 02:10:32 | GPS: 14.096260 | red Av
 Epoch 3564/4000 (89%) | Time: 00:00:18 | ETA: 02:10:14 | GPS: 13.735972 | red Avg Loss: -0.457736 | green Avg Loss: -0.334066 | red Avg Reward: 37.691177 | green Avg Reward: 39.608364 | Games Played: 250
 Epoch 3565/4000 (89%) | Time: 00:00:18 | ETA: 02:09:56 | GPS: 13.678559 | green Avg Loss: -0.419210 | red Avg Loss: -0.423519 | green Avg Reward: 44.645039 | red Avg Reward: 55.303135 | Games Played: 250
 Epoch 3566/4000 (89%) | Time: 00:00:22 | ETA: 02:09:39 | GPS: 10.939728 | green Avg Loss: -0.434638 | red Avg Loss: -0.391429 | green Avg Reward: 48.700562 | red Avg Reward: 61.270195 | Games Played: 250
-Epoch 3567/4000 (89%) | Time: 00:00:20 | ETA: 02:09:21 | GPS: 11.974968 | red Avg Loss: -0.369302 | green Avg Loss: -0.375894 | red Avg Reward: 45.522682 | green Avg Reward: 33.928123 | Games Played: 250
-Epoch 3568/4000 (89%) | Time: 00:00:20 | ETA: 02:09:03 | GPS: 12.233467 | red Avg Loss: -0.374153 | green Avg Loss: -0.454035 | red Avg Reward: 43.481079 | green Avg Reward: 30.737488 | Games Played: 250
-Epoch 3569/4000 (89%) | Time: 00:00:18 | ETA: 02:08:45 | GPS: 13.772172 | red Avg Loss: -0.349765 | blue Avg Loss: -0.365123 | red Avg Reward: 48.596134 | blue Avg Reward: 51.767113 | Games Played: 250
-Epoch 3570/4000 (89%) | Time: 00:00:17 | ETA: 02:08:28 | GPS: 14.062807 | blue Avg Loss: -0.460681 | red Avg Loss: -0.479842 | blue Avg Reward: 80.172729 | red Avg Reward: 55.652706 | Games Played: 250
-Epoch 3571/4000 (89%) | Time: 00:00:19 | ETA: 02:08:10 | GPS: 12.500967 | green Avg Loss: -0.432397 | blue Avg Loss: -0.627945 | green Avg Reward: 53.638607 | blue Avg Reward: 97.976532 | Games Played: 250
-Epoch 3572/4000 (89%) | Time: 00:00:18 | ETA: 02:07:52 | GPS: 13.205678 | green Avg Loss: -0.395082 | red Avg Loss: -0.437755 | green Avg Reward: 40.008434 | red Avg Reward: 48.322624 | Games Played: 250
-Epoch 3573/4000 (89%) | Time: 00:00:18 | ETA: 02:07:34 | GPS: 13.726341 | blue Avg Loss: -0.390066 | green Avg Loss: -0.456310 | blue Avg Reward: 74.928993 | green Avg Reward: 37.724037 | Games Played: 250
-Epoch 3574/4000 (89%) | Time: 00:00:18 | ETA: 02:07:16 | GPS: 13.324217 | red Avg Loss: -0.350072 | blue Avg Loss: -0.466745 | red Avg Reward: 49.677708 | blue Avg Reward: 56.915405 | Games Played: 250
-Epoch 3575/4000 (89%) | Time: 00:00:18 | ETA: 02:06:58 | GPS: 13.701956 | blue Avg Loss: -0.866505 | green Avg Loss: -0.444322 | blue Avg Reward: 79.461700 | green Avg Reward: 64.380188 | Games Played: 250
-Epoch 3576/4000 (89%) | Time: 00:00:18 | ETA: 02:06:41 | GPS: 13.717923 | green Avg Loss: -0.388809 | red Avg Loss: -0.883093 | green Avg Reward: 71.470940 | red Avg Reward: 58.393665 | Games Played: 250
-Epoch 3577/4000 (89%) | Time: 00:00:19 | ETA: 02:06:23 | GPS: 12.631368 | green Avg Loss: -0.378503 | blue Avg Loss: -0.568805 | green Avg Reward: 45.893559 | blue Avg Reward: 70.091621 | Games Played: 250
-Epoch 3578/4000 (89%) | Time: 00:00:22 | ETA: 02:06:05 | GPS: 10.897421 | green Avg Loss: -0.421915 | red Avg Loss: -0.488996 | green Avg Reward: 47.014462 | red Avg Reward: 57.302647 | Games Played: 250
