@@ -56,7 +56,7 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 17, hidden_size = 128, num_layers = 1;
+        int64_t input_size = 22, hidden_size = 128, num_layers = 1;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
@@ -190,11 +190,15 @@ namespace NNAI
         int positionNum = static_cast<int>( nn_outputs[1] ); // Position index
         int attack_direction = static_cast<int>( nn_outputs[2] ); // Direction index (0-6)
 
-        attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
+        int formatted_attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
 
         // int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
-        int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
+        int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, formatted_attack_direction );
+        if ( attack_direction == -1 ) {
+            formatted_attack_direction = -1; // Archery attack
+            positionNum = -1;
+        }
 
         int targetUnitUID = -1;
         auto cell = arena.GetBoard()->GetCell( attackTargetPositon );
@@ -222,7 +226,7 @@ namespace NNAI
         if ( actionType == 1
              && ( targetUnitUID == -1
                   || !CheckAttackParameters( &currentUnit, arena.GetBoard()->GetCell( attackTargetPositon )->GetUnit(), positionNum, attackTargetPositon,
-                                             attack_direction ) ) ) {
+                                             formatted_attack_direction ) ) ) {
             actionType = 0; // Move instead of attack if attack would be illegal
             // std::cout << "Attack to position " << attackTargetPositon << " is not available for unit " << currentUnitUID << ". Changing to MOVE." << std::endl;
         }
@@ -238,7 +242,7 @@ namespace NNAI
             break;
         case 1:
             // ATTACK: [CommandType, unitUID, targetUnitUID, moveTargetIdx, attackTargetIdx, attackDirection]
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attack_direction );
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, formatted_attack_direction );
             // TODO
             break;
         case 2:
@@ -268,25 +272,30 @@ namespace NNAI
     }
 
     // Extract features for a single unit
-    std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena )
+    std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
         std::vector<float> features;
 
         features.push_back( unit.GetUID() ); // Unique ID
+        features.push_back( normalize( unit.GetCount(), 0, 300 ) ); // Normalize HP
         features.push_back( normalize( unit.GetHitPoints(), 0, 500 ) ); // Normalize HP
-        features.push_back( normalize( unit.GetSpeed( false, true ), 0, 20 ) ); // Normalize speed
+        features.push_back( normalize( unit.GetSpeed( false, true ), 0, 10 ) ); // Normalize speed
+        features.push_back( normalize( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ), 0, 50 ) ); // Distance to current unit
         features.push_back( normalize( unit.GetAttack(), 0, 100 ) ); // Normalize attack
         features.push_back( normalize( unit.GetDefense(), 0, 100 ) ); // Normalize defense
         features.push_back( unit.isFlying() ? 1.0f : 0.0f ); // Is flying
         features.push_back( unit.isArchers() ? 1.0f : 0.0f ); // Is archer
+        features.push_back( normalize( unit.GetShots(), 0, 50 ) ); // Normalize shots left
         features.push_back( unit.isHandFighting() ? 1.0f : 0.0f ); // Is hand fighting
         features.push_back( unit.isWide() ? 1.0f : 0.0f ); // Is wide
         features.push_back( unit.isAffectedByMorale() ? 1.0f : 0.0f ); // Affected by morale
         features.push_back( unit.isImmovable() ? 1.0f : 0.0f ); // Is immovable
-        features.push_back( unit.GetMorale() ); // Morale
-        features.push_back( unit.GetLuck() ); // Luck
+        features.push_back( normalize( unit.GetMorale(), 0, 100 ) ); // Morale
+        features.push_back( normalize( unit.GetLuck(), 0, 100 ) ); // Luck
         features.push_back( unit.GetColor() ); // Ally or enemy color
         features.push_back( normalize( unit.GetPosition().GetHead()->GetIndex(), 0, 100 ) ); // Position (normalized by battlefield size)
+        currentunit.GetColor() == unit.GetColor() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Is current unit ally or foe
+        unit.GetColor() == arena.GetArmy1Color() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Left or right
         unit.Modes( Battle::TR_MOVED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Moved this turn
         unit.Modes( Battle::TR_RESPONDED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Responded this turn
 
@@ -305,13 +314,13 @@ namespace NNAI
         std::vector<std::vector<float>> featuresList;
 
         // 1. Current unit (always first)
-        featuresList.push_back( extractUnitFeatures( currentUnit, arena ) );
+        featuresList.push_back( extractUnitFeatures( currentUnit, arena, currentUnit ) );
 
         // 2. Up to 4 other allies (excluding current unit)
         int allyCount = 0;
         for ( const Battle::Unit * unit : allies ) {
             if ( unit && unit->isValid() && unit != &currentUnit ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena ) );
+                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
                 ++allyCount;
                 if ( allyCount == 4 )
                     break;
@@ -330,7 +339,7 @@ namespace NNAI
         int enemyCount = 0;
         for ( const Battle::Unit * unit : enemies ) {
             if ( unit && unit->isValid() ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena ) );
+                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
                 ++enemyCount;
                 if ( enemyCount == 5 )
                     break;
