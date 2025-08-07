@@ -409,8 +409,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     epoch_total_reward1 += sum_rewards1;
                     epoch_total_reward2 += sum_rewards2;
 
-                    NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1, i );
-                    NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2, i );
+                    NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1 );
+                    NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
 
                     ++game_count;
                 }
