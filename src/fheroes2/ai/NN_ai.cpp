@@ -433,7 +433,7 @@ namespace NNAI
 
     void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
-                        float & epoch_total_reward, torch::Device device, int model_id, int game_index )
+                        float & epoch_total_reward, torch::Device device, int model_id )
     {
         if ( states.empty() || rewards.empty() || actions[0].empty() ) {
             /*std::cerr << "Warning: Skipping model" << model_id << " training for game " << game_index << std::endl;

@@ -146,7 +146,7 @@ namespace NNAI
 
     void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
-                        float & epoch_total_reward, torch::Device device, int model_id, int game_index );
+                        float & epoch_total_reward, torch::Device device, int model_id );
     void resetGameRewardStats( Battle::Arena & arena );
 } // NNAI
 
