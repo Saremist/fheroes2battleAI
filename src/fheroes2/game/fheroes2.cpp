@@ -395,20 +395,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                     NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // GAME LOOP
 
-                    // Calculate sum of rewards for both players
-                    float sum_rewards1 = 0.0f;
-                    for ( const auto & r : rewards1 ) {
-                        sum_rewards1 += r.cpu().item<float>();
-                    }
-                    float sum_rewards2 = 0.0f;
-                    for ( const auto & r : rewards2 ) {
-                        sum_rewards2 += r.cpu().item<float>();
-                    }
-
-                    // Accumulate total rewards for the epoch
-                    epoch_total_reward1 += sum_rewards1;
-                    epoch_total_reward2 += sum_rewards2;
-
                     NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1 );
                     NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
 
@@ -588,7 +574,7 @@ int main( int argc, char ** argv )
 
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
-    // NNAI::device = torch::kCPU; // Force CPU for now, as CUDA is slower in this environment
+    NNAI::device = torch::kCPU; // Force CPU for now, as CUDA is slower in this environment
 
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
