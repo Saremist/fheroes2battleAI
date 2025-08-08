@@ -267,7 +267,6 @@ namespace NNAI
     // Normalize a value to the range [0, 1]
     inline float normalize( float value, float min, float max )
     {
-        return value;
         // Cast to float to avoid integer division and loss of precision
         return ( static_cast<float>( value ) - static_cast<float>( min ) ) / ( static_cast<float>( max ) - static_cast<float>( min ) );
     }
