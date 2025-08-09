@@ -54,18 +54,18 @@ namespace NNAI
         // Output heads
         torch::nn::Linear action_type_head{ nullptr }; // 4 types: SKIP, MOVE, ATTACK, SPELLCAST
         torch::nn::Linear position_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (position index 0-98)
-        torch::nn::Linear direction_head{ nullptr }; // For ATTACK (0-6 directions)
+        torch::nn::Linear destination_head{ nullptr }; // For ATTACK (position index 0-98)
 
         BattleLSTMImpl( int64_t input_size = 22, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_head( hidden_size, 99 )
-            , direction_head( hidden_size, 7 )
+            , destination_head( hidden_size, 99 )
         {
             register_module( "lstm_layer", lstm_layer );
             register_module( "action_type_head", action_type_head );
             register_module( "position_head", position_head );
-            register_module( "direction_head", direction_head );
+            register_module( "destination_head", destination_head );
 
             // --- Initialize LSTM ---
             for ( int layer = 0; layer < num_layers; ++layer ) {
@@ -97,11 +97,11 @@ namespace NNAI
             // --- Initialize output heads (Xavier) ---
             torch::nn::init::xavier_uniform_( action_type_head->weight );
             torch::nn::init::xavier_uniform_( position_head->weight );
-            torch::nn::init::xavier_uniform_( direction_head->weight );
+            torch::nn::init::xavier_uniform_( destination_head->weight );
 
             torch::nn::init::constant_( action_type_head->bias, 0 );
             torch::nn::init::constant_( position_head->bias, 0 );
-            torch::nn::init::constant_( direction_head->bias, 0 );
+            torch::nn::init::constant_( destination_head->bias, 0 );
         }
 
         std::vector<torch::Tensor> forward( torch::Tensor x )
@@ -117,9 +117,9 @@ namespace NNAI
             // Output multiple heads
             torch::Tensor action_type_logits = action_type_head( last_timestep );
             torch::Tensor position_logits = position_head( last_timestep );
-            torch::Tensor direction_logits = direction_head( last_timestep );
+            torch::Tensor destination_logits = destination_head( last_timestep );
 
-            return { action_type_logits, position_logits, direction_logits };
+            return { action_type_logits, position_logits, destination_logits };
         }
     };
 
@@ -136,7 +136,7 @@ namespace NNAI
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
     // Returns two random models and their names.
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels();
+    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels();
 
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 

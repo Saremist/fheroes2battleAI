@@ -188,15 +188,16 @@ namespace NNAI
 
         int actionType = static_cast<int>( nn_outputs[0] ); // Action type index (0: SKIP, 1: MOVE, 2: ATTACK, 3: SPELLCAST)
         int positionNum = static_cast<int>( nn_outputs[1] ); // Position index
-        int attack_direction = static_cast<int>( nn_outputs[2] ); // Direction index (0-6)
+        int attackTargetPositon = static_cast<int>( nn_outputs[2] ); // Destination index
+        // int attack_direction = static_cast<int>( nn_outputs[2] ); // Direction index (0-6)
 
-        int formatted_attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
+        // int attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
+        int attack_direction = Battle::Board::GetDirectionFromIndices( positionNum, attackTargetPositon, arena.GetBoard()->widthInCells );
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
 
-        // int attackTargetPositon = apply_attack_to_grid(positionNum, attack_direction);
-        int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, formatted_attack_direction );
+        // int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
         if ( attack_direction == -1 ) {
-            formatted_attack_direction = -1; // Archery attack
+            attack_direction = -1; // Archery attack
             positionNum = -1;
         }
 
@@ -215,24 +216,27 @@ namespace NNAI
 
         if ( positionNum == -1 && actionType == 0 ) {
             actionType = 3; // SKIP move to already ocupied slot
-            // std::cout << "Already at " << currentUnit.GetPosition().GetHead() << ". Defaulting to SKIP." << std::endl;
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Position " << positionNum << " is already occupied by unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
         }
-
-        /*std::cout << std::endl
-                  << "Action Type: " << actionType << ", Position Num: " << positionNum << ", Attack Direction: " << attack_direction
-                  << ", Current Unit UID: " << currentUnitUID << ", Target unit UID: " << targetUnitUID << ", Attack Target Position: " << attackTargetPositon
-                  << std::endl;*/
+        if ( !NNAI::skipDebugLog )
+            std::cout << std::endl
+                      << "Action Type: " << actionType << ", Position Num: " << positionNum << ", Attack Direction: " << attack_direction
+                      << ", Current Unit UID: " << currentUnitUID << ", Target unit UID: " << targetUnitUID << ", Attack Target Position: " << attackTargetPositon
+                      << std::endl;
 
         if ( actionType == 1
              && ( targetUnitUID == -1
                   || !CheckAttackParameters( &currentUnit, arena.GetBoard()->GetCell( attackTargetPositon )->GetUnit(), positionNum, attackTargetPositon,
-                                             formatted_attack_direction ) ) ) {
+                                             attack_direction ) ) ) {
             actionType = 0; // Move instead of attack if attack would be illegal
-            // std::cout << "Attack to position " << attackTargetPositon << " is not available for unit " << currentUnitUID << ". Changing to MOVE." << std::endl;
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Attack to position " << attackTargetPositon << " is not available for unit " << currentUnitUID << ". Changing to MOVE." << std::endl;
         }
         if ( actionType == 0 && !CheckMoveParameters( &currentUnit, positionNum ) ) {
             actionType = 3; // SKIP move to illegal positon ends up as SKIP
-            // std::cout << "Position " << positionNum << " is not available for unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Position " << positionNum << " is not available for unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
         }
 
         switch ( actionType ) {
@@ -242,7 +246,7 @@ namespace NNAI
             break;
         case 1:
             // ATTACK: [CommandType, unitUID, targetUnitUID, moveTargetIdx, attackTargetIdx, attackDirection]
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, formatted_attack_direction );
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attack_direction );
             // TODO
             break;
         case 2:
@@ -404,7 +408,7 @@ namespace NNAI
             }
         }
     }
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
+    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
     {
         // Pair each model pointer with its name
         std::vector<std::pair<std::shared_ptr<BattleLSTM>, std::string>> models
@@ -428,7 +432,12 @@ namespace NNAI
             idx2 = dis( gen );
         } while ( idx2 == idx1 );
 
-        return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second );
+        int idx3;
+        do {
+            idx3 = dis( gen );
+        } while ( idx3 == idx1 || idx3 == idx2 );
+
+        return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second, *models[idx3].first, models[idx3].second );
     }
 
     void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,

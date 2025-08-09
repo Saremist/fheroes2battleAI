@@ -56,6 +56,9 @@
 #include <cassert>
 #endif
 
+#include <fstream>
+
+#include "NN_ai.h";
 #include "agg.h"
 #include "agg_image.h"
 #include "audio_manager.h"
@@ -279,7 +282,6 @@ namespace
     }
 }
 
-#include "NN_ai.h";
 /*
 Main Training loop for the game.
 It chcages default game loop to run training games.
@@ -290,11 +292,11 @@ It is not intended to be used by the end user.
 Modified from the original fheroes2::Game::mainGameLoop() by
 Milan Wr\F3blewski for the purpose of Engineer thesis.
 */
+
 int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES )
 {
 #if defined( _WIN32 )
     assert( argc == __argc );
-
     argv = __argv;
 #else
     (void)argc;
@@ -302,58 +304,43 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
     try {
         const fheroes2::HardwareInitializer hardwareInitializer;
         Logging::InitLog();
-
         COUT( GetCaption() )
 
         Settings & conf = Settings::Get();
         conf.SetProgramPath( argv[0] );
-
         InitConfigDir();
         InitDataDir();
         ReadConfigs();
 
         std::set<fheroes2::SystemInitializationComponent> coreComponents{ fheroes2::SystemInitializationComponent::Audio,
                                                                           fheroes2::SystemInitializationComponent::Video };
-
 #if defined( TARGET_PS_VITA ) || defined( TARGET_NINTENDO_SWITCH )
         coreComponents.emplace( fheroes2::SystemInitializationComponent::GameController );
 #endif
-
         const fheroes2::CoreInitializer coreInitializer( coreComponents );
-
         DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() )
 
         const DisplayInitializer displayInitializer;
         const DataInitializer dataInitializer;
-
         ListFiles midiSoundFonts;
-
         midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
         midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
-
 #ifdef WITH_DEBUG
         for ( const std::string & file : midiSoundFonts ) {
             DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
         }
 #endif
-
         const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
-
-        // Load palette.
         fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
         fheroes2::Display::instance().changePalette( nullptr, true );
-
-        // init game data
         Game::Init();
-
         conf.setGameLanguage( conf.getGameLanguage() );
 
         try {
             const CursorRestorer cursorRestorer( true, Cursor::POINTER );
-
-            // Traing Setup
-
             double total_elapsed_seconds = 0.0;
+
+            std::stringstream log_buffer; // New: Buffer to hold log messages
 
             for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
                 NNAI::m1WinCount = 0;
@@ -365,11 +352,11 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 std::string name1 = std::get<1>( selection );
                 BattleLSTM & model2 = std::get<2>( selection );
                 std::string name2 = std::get<3>( selection );
+                BattleLSTM & model3 = std::get<4>( selection );
+                std::string name3 = std::get<5>( selection );
 
                 model1->train();
                 model2->train();
-
-                // Assign models to global pointers used during game
                 NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( model1 );
                 NNAI::g_model2 = std::make_shared<NNAI::BattleLSTM>( model2 );
 
@@ -378,10 +365,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                 float total_loss1 = 0.0, total_loss2 = 0.0;
                 int game_count = 0;
-                float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0; // Total rewards for this epoch
+                float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0;
 
                 for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
-                    // === Data containers for the current game ===
                     std::vector<torch::Tensor> states1, states2;
                     std::vector<std::vector<torch::Tensor>> actions1( 3 ), actions2( 3 );
                     std::vector<torch::Tensor> rewards1, rewards2;
@@ -393,7 +379,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     NNAI::g_actions2 = &actions2;
                     NNAI::g_rewards2 = &rewards2;
 
-                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // GAME LOOP
+                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
                     NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1 );
                     NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
@@ -407,10 +393,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 int64_t remaining_epochs = num_epochs - ( epoch + 1 );
                 double estimated_remaining_time = avg_epoch_time * remaining_epochs;
                 double games_per_second = ( epoch_duration.count() > 0.0 ) ? ( game_count / epoch_duration.count() ) : 0.0;
-
                 int percent_complete = static_cast<int>( ( ( epoch + 1.0 ) / num_epochs ) * 100.0 );
 
-                // Format time
                 auto format_seconds = []( double seconds ) -> std::string {
                     int hrs = static_cast<int>( seconds ) / 3600;
                     int mins = ( static_cast<int>( seconds ) % 3600 ) / 60;
@@ -420,7 +404,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     return std::string( buffer );
                 };
 
-                // === Epoch summary ===
                 std::string epochSummary = "Epoch " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs ) + " (" + std::to_string( percent_complete ) + "%)"
                                            + " | Time: " + format_seconds( epoch_duration.count() ) + " | ETA: " + format_seconds( estimated_remaining_time )
                                            + " | GPS: " + std::to_string( games_per_second ) + " | " + name1
@@ -431,19 +414,25 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                                            + " | " + name2 + " Games Won: " + std::to_string( NNAI::m2WinCount ) + " | Games Played: " + std::to_string( game_count );
 
                 std::cout << epochSummary << std::endl;
-                std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
-                if ( !log_file ) {
-                    std::cerr << "Failed to opent training_log.txt for writing. \n";
-                }
-                log_file << epochSummary << std::endl;
+                log_buffer << epochSummary << std::endl; // New: Write to the stringstream buffer
 
-                if ( epoch % 10 == 0 ) {
+                if ( ( epoch + 1 ) % 10 == 0 || epoch == num_epochs - 1 ) {
+                    std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
+                    if ( !log_file ) {
+                        std::cerr << "Failed to open training_log.txt for writing. \n";
+                    }
+                    else {
+                        log_file << log_buffer.str(); // New: Write the entire buffer to the file
+                        log_buffer.str( "" ); // New: Clear the buffer
+                        log_file.close();
+                    }
+
                     NNAI::saveModel( model1, "model_" + name1 + ".pt" );
                     NNAI::saveModel( model2, "model_" + name2 + ".pt" );
+                    NNAI::saveModel( model3, "model_" + name3 + ".pt" );
                 }
             }
         }
-
         catch ( const fheroes2::InvalidDataResources & ex ) {
             ERROR_LOG( ex.what() )
             displayMissingResourceWindow();
