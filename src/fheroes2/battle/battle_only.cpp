@@ -233,10 +233,8 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
     fheroes2::Copy( background, 0, 0, display, cur_pt.x, cur_pt.y, background.width(), background.height() );
 
-    if ( !NNAI::skipDebugLog ) {
-        redrawOpponents( cur_pt );
-        redrawOpponentsStats( cur_pt );
-    }
+    redrawOpponents( cur_pt );
+    redrawOpponentsStats( cur_pt );
 
     for ( auto & info : armyInfo ) {
         if ( info.hero != nullptr ) {
@@ -244,7 +242,7 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
 
             updateHero( info, cur_pt );
         }
-        else if ( !NNAI::skipDebugLog ) {
+        else {
             info.ui.army = std::make_unique<ArmyBar>( &info.monster, true, false, true );
             info.ui.army->setTableSize( { 5, 1 } );
             info.ui.army->setRenderingOffset( { cur_pt.x + armyOffsetX[info.armyId], cur_pt.y + 267 } );
@@ -281,13 +279,13 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_START_GOOD, 0 ), display, buttonStart.area().getPosition(), { -5, 5 } );
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_EXIT_GOOD, 0 ), display, buttonExit.area().getPosition(), { -5, 5 } );
 
-    if ( !NNAI::skipDebugLog ) {
-        buttonStart.draw();
-        buttonExit.draw();
-        buttonReset.draw();
 
-        display.render();
-    }
+    buttonStart.draw();
+    buttonExit.draw();
+    buttonReset.draw();
+
+    display.render();
+    
     bool result = NNAI::isTraining;
 
     while ( !NNAI::isTraining && le.HandleEvents() ) { // will skip input and instantly start a game if training mode is enabled
@@ -345,8 +343,8 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
                     updateHero( first, cur_pt );
                 }
 
-                if ( !NNAI::skipDebugLog )
-                    redrawOpponents( cur_pt );
+                
+                redrawOpponents( cur_pt );
 
                 first.needRedraw = true;
                 needRedrawOpponentsStats = true;
