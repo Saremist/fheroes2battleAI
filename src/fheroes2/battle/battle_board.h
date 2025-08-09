@@ -111,6 +111,7 @@ namespace Battle
 
         static bool isValidDirection( const int32_t index, const int dir );
         static int32_t GetIndexDirection( const int32_t index, const int dir );
+        static int32_t GetDirectionFromIndices( const int32_t startIndex, const int32_t endIndex, const int32_t widthInCells );
 
         static Indexes GetDistanceIndexes( const int32_t center, const uint32_t radius );
         static Indexes GetDistanceIndexes( const Unit & unit, const uint32_t radius );

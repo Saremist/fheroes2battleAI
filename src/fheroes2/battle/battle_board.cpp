@@ -335,6 +335,63 @@ int32_t Battle::Board::GetIndexDirection( const int32_t index, const int dir )
     return -1;
 }
 
+int32_t Battle::Board::GetDirectionFromIndices( const int32_t startIndex, const int32_t endIndex, const int32_t widthInCells )
+{
+    // If the start and end are the same, the direction is CENTER.
+    if ( startIndex == endIndex ) {
+        return CENTER;
+    }
+
+    // Calculate the row (y-coordinate) of the starting index.
+    const int32_t y = startIndex / widthInCells;
+
+    // Calculate the difference between the end and start indices.
+    const int32_t diff = endIndex - startIndex;
+
+    // Check if the start and end indices are in the same row.
+    if ( diff == 1 ) {
+        return RIGHT;
+    }
+    else if ( diff == -1 ) {
+        return LEFT;
+    }
+
+    // Check the hexagonal directions based on the row's parity (odd or even).
+    if ( y % 2 == 0 ) {
+        // For even rows, we check against the offsets from the original function.
+        if ( diff == -widthInCells ) {
+            return TOP_LEFT;
+        }
+        else if ( diff == -widthInCells + 1 ) {
+            return TOP_RIGHT;
+        }
+        else if ( diff == widthInCells ) {
+            return BOTTOM_LEFT;
+        }
+        else if ( diff == widthInCells + 1 ) {
+            return BOTTOM_RIGHT;
+        }
+    }
+    else {
+        // For odd rows, the offsets are different.
+        if ( diff == -widthInCells - 1 ) {
+            return TOP_LEFT;
+        }
+        else if ( diff == -widthInCells ) {
+            return TOP_RIGHT;
+        }
+        else if ( diff == widthInCells - 1 ) {
+            return BOTTOM_LEFT;
+        }
+        else if ( diff == widthInCells ) {
+            return BOTTOM_RIGHT;
+        }
+    }
+
+    // If no direction matches, return an invalid direction constant.
+    return -1;
+}
+
 int32_t Battle::Board::GetIndexAbsPosition( const fheroes2::Point & pt ) const
 {
     const_iterator it = begin();
