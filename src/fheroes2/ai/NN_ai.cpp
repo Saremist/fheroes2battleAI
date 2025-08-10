@@ -196,7 +196,7 @@ namespace NNAI
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
 
         // int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
-        if ( attack_direction == -1 ) {
+        if ( attack_direction == -1 && currentUnit.GetShots() > 0 ) {
             attack_direction = -1; // Archery attack
             positionNum = -1;
         }
