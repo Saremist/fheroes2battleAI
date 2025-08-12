@@ -195,10 +195,10 @@ namespace NNAI
         int attack_direction = Battle::Board::GetDirectionFromIndices( positionNum, attackTargetPositon, arena.GetBoard()->widthInCells );
         int currentUnitUID = currentUnit.GetUID(); // Current unit UID
 
-        // int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
-        if ( attack_direction == -1 && currentUnit.GetShots() > 0 ) {
-            attack_direction = -1; // Archery attack
-            positionNum = -1;
+        if ( actionType == 2 ) {
+            actionType = 1;
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Spellcasting is not implemented treating as ATTACK" << std::endl;
         }
 
         int targetUnitUID = -1;
@@ -208,6 +208,11 @@ namespace NNAI
             if ( unit ) {
                 targetUnitUID = unit->GetUID();
             }
+        }
+
+        // int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
+        if ( attack_direction == -1 && targetUnitUID != -1 && currentUnit.GetShots() > 0 ) {
+            positionNum = -1;
         }
 
         if ( positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {

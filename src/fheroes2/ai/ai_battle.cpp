@@ -622,23 +622,25 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
     const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
     const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
-    /*std::cout << "currentUnit:" << std::endl;
-    PrintUnitInfo( currentUnit );
-    std::cout << std::endl;
+    if ( !NNAI::skipDebugLog ) {
+        std::cout << "currentUnit:" << std::endl;
+        PrintUnitInfo( currentUnit );
+        std::cout << std::endl;
 
-    std::cout << "allies:" << std::endl;
-    for ( const Battle::Unit * allie : allies ) {
-        assert( allie != nullptr );
-        PrintUnitInfo( *allie );
-    }
-    std::cout << std::endl;
+        std::cout << "allies:" << std::endl;
+        for ( const Battle::Unit * allie : allies ) {
+            assert( allie != nullptr );
+            PrintUnitInfo( *allie );
+        }
+        std::cout << std::endl;
 
-    std::cout << "enemies:" << std::endl;
-    for ( const Battle::Unit * enemy : enemies ) {
-        assert( enemy != nullptr );
-        PrintUnitInfo( *enemy );
+        std::cout << "enemies:" << std::endl;
+        for ( const Battle::Unit * enemy : enemies ) {
+            assert( enemy != nullptr );
+            PrintUnitInfo( *enemy );
+        }
+        std::cout << std::endl;
     }
-    std::cout << std::endl;*/
     Battle::Actions plannedActions;
 
     if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
