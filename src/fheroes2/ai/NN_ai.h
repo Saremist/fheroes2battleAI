@@ -157,6 +157,24 @@ namespace NNAI
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id );
     void resetGameRewardStats( Battle::Arena & arena );
+
+    inline std::pair<int, int> getXYCoordinates( const Battle::Unit & unit )
+    {
+        // ( unit.GetHeadIndex() / Board::widthInCells ) + 1 ) + ", " + std::to_string( ( unit.GetHeadIndex() % Board::widthInCells ) + 1 )
+        int x = ( unit.GetHeadIndex() / Battle::Board::widthInCells );
+        int y = ( unit.GetHeadIndex() % Battle::Board::widthInCells );
+        return { x, y };
+    }
+
+    inline int getIndexFromXY( int x, int y )
+    {
+        return ( x * Battle::Board::widthInCells ) + y;
+    }
+
+    inline float normalize( float value, float min, float max )
+    {
+        return ( static_cast<float>( value ) - static_cast<float>( min ) ) / ( static_cast<float>( max ) - static_cast<float>( min ) );
+    }
 } // NNAI
 
 void PrintUnitInfo( const Battle::Unit & unit );

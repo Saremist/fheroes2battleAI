@@ -197,8 +197,8 @@ namespace NNAI
         int attackTargetPositonY = static_cast<int>( nn_outputs[4] );
 
         // Use the coordinates to get the board index
-        int positionNum = arena.GetBoard()->GetIndexAbsPosition( fheroes2::Point( positionNumX, positionNumY ) );
-        int attackTargetPosition = arena.GetBoard()->GetIndexAbsPosition( fheroes2::Point( attackTargetPositonX, attackTargetPositonY ) );
+        int positionNum = getIndexFromXY( positionNumX, positionNumY );
+        int attackTargetPosition = getIndexFromXY( attackTargetPositonX, attackTargetPositonY );
 
         int attack_direction = Battle::Board::GetDirection( positionNum, attackTargetPosition );
         int currentUnitUID = static_cast<int>( currentUnit.GetUID() );
@@ -287,22 +287,15 @@ namespace NNAI
         return actions;
     }
 
-    // Normalize a value to the range [0, 1]
-    inline float normalize( float value, float min, float max )
-    {
-        // Cast to float to avoid integer division and loss of precision
-        return ( static_cast<float>( value ) - static_cast<float>( min ) ) / ( static_cast<float>( max ) - static_cast<float>( min ) );
-    }
-
     // Extract features for a single unit
     std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
         std::vector<float> features;
-        fheroes2::Rect cellRect = unit.GetPosition().GetHead()->GetPos();
+        std::pair<int, int> coords = getXYCoordinates( unit );
 
         features.push_back( static_cast<float>( unit.GetUID() ) ); // Unique ID
-        features.push_back( normalize( static_cast<float>( cellRect.x ), 0, 11 ) ); // Position X (normalized by battlefield size)
-        features.push_back( normalize( static_cast<float>( cellRect.y ), 0, 9 ) ); // Position Y (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( coords.first ), 0, 9 ) ); // Position X (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( coords.second ), 0, 11 ) ); // Position Y (normalized by battlefield size)
         features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) ); // Normalize Count
         features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) ); // Normalize HP
         features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) ); // Normalize speed
