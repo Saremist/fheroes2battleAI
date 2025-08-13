@@ -13,6 +13,7 @@
 #include <algorithm> // For std::reverse
 #include <random>
 #include <tuple>
+#include <vector>
 
 #include "battle_arena.h"
 #include "battle_army.h"
@@ -56,7 +57,7 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 22, hidden_size = 128, num_layers = 1;
+        int64_t input_size = 24, hidden_size = 128, num_layers = 1;
 
         try {
             BattleLSTM model( input_size, hidden_size, num_layers );
@@ -106,16 +107,16 @@ namespace NNAI
             return g_model2;
         default:
             std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
+            return nullptr;
         }
     }
 
-    bool isNNControlled( int color )
+    bool isNNControlled( int /*color*/ )
     {
         return true; // TODO Placeholder for actual logic to determine if the AI is controlled by NN
     }
 
-    // Converts a vector of action indices (from NN output) to Battle::Actions
-    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit ) // , const Battle::Arena & arena
+    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         if ( currentUnit.Modes( Battle::TR_MOVED ) ) {
             return {};
@@ -124,148 +125,161 @@ namespace NNAI
         BattleLSTM & model = *getModelByColor( currentUnit.GetColor() );
 
         if ( !model ) {
-            std::cerr << "Error: Neural network model (g_model1) is not initialized!" << std::endl;
+            std::cerr << "Error: Neural network model is not initialized!" << std::endl;
             return {};
         }
 
         torch::Tensor input = prepareBattleLSTMInput( arena, currentUnit );
-        if ( currentUnit.GetCount() == 0 )
+        if ( currentUnit.GetCount() == 0 ) {
             return {};
+        }
 
-        std::vector<torch::Tensor> nn_output = model->forward( input ); // Get the NN output
+        std::vector<torch::Tensor> nn_output = model->forward( input );
 
-        // Extract highest-probability action per head
         std::vector<int64_t> nn_outputs;
         for ( const auto & head_output : nn_output ) {
-            // Get probabilities
             auto probs = torch::nn::functional::softmax( head_output, /*dim=*/1 );
-            probs = probs.clamp( 0, 1 );
-            probs = probs.nan_to_num( 0.0, 0.0, 0.0 );
+            probs = probs.clamp( 0, 1 ).nan_to_num( 0.0, 0.0, 0.0 );
+
             if ( !probs.isfinite().all().item<bool>() || probs.min().item<float>() < 0 ) {
                 std::cerr << "Invalid probabilities detected, SKIPPING." << std::endl;
-                return {}; // Skip if probabilities are not valid
+                return {};
             }
-            else {
-                auto sampled = probs.multinomial( /*num_samples=*/1 );
-                nn_outputs.push_back( sampled.item<int64_t>() );
-            }
+
+            auto sampled = probs.multinomial( /*num_samples=*/1 );
+            nn_outputs.push_back( sampled.item<int64_t>() );
         }
 
         if ( NNAI::isTraining ) {
-            const uint8_t color = currentUnit.GetColor();
+            const uint8_t color = static_cast<uint8_t>( currentUnit.GetColor() );
             std::vector<torch::Tensor> head_actions;
-
             for ( int64_t val : nn_outputs ) {
                 head_actions.push_back( torch::tensor( val, torch::TensorOptions().dtype( torch::kLong ).device( NNAI::device ) ) );
             }
 
-            if ( head_actions.size() != 3 ) {
-                std::cerr << "Warning: Expected 3 heads, got " << head_actions.size() << std::endl;
+            if ( head_actions.size() != 5 ) {
+                std::cerr << "Warning: Expected 5 heads, got " << head_actions.size() << std::endl;
                 return {};
             }
 
-            // Remove batch dimension from input if needed
             torch::Tensor squeezed_input = input.squeeze( 0 );
 
             if ( color == 0x01 ) { // BLUE team
-                g_states1->push_back( squeezed_input.to( NNAI::device ) );
-                for ( size_t h = 0; h < 3; ++h ) {
-                    ( *g_actions1 )[h].push_back( head_actions[h].to( NNAI::device ) );
+                if ( NNAI::g_states1 )
+                    NNAI::g_states1->push_back( squeezed_input.to( NNAI::device ) );
+                if ( NNAI::g_actions1 ) {
+                    for ( size_t h = 0; h < 5; ++h ) {
+                        ( *NNAI::g_actions1 )[h].push_back( head_actions[h].to( NNAI::device ) );
+                    }
                 }
             }
             else if ( color == 0x04 ) { // RED team
-                g_states2->push_back( squeezed_input.to( NNAI::device ) );
-                for ( size_t h = 0; h < 3; ++h ) {
-                    ( *g_actions2 )[h].push_back( head_actions[h].to( NNAI::device ) );
+                if ( NNAI::g_states2 )
+                    NNAI::g_states2->push_back( squeezed_input.to( NNAI::device ) );
+                if ( NNAI::g_actions2 ) {
+                    for ( size_t h = 0; h < 5; ++h ) {
+                        ( *NNAI::g_actions2 )[h].push_back( head_actions[h].to( NNAI::device ) );
+                    }
                 }
             }
             else {
-                std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
+                if ( !NNAI::skipDebugLog )
+                    std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
             }
         }
 
         Battle::Actions actions;
 
-        int actionType = static_cast<int>( nn_outputs[0] ); // Action type index (0: SKIP, 1: MOVE, 2: ATTACK, 3: SPELLCAST)
-        int positionNum = static_cast<int>( nn_outputs[1] ); // Position index
-        int attackTargetPositon = static_cast<int>( nn_outputs[2] ); // Destination index
-        // int attack_direction = static_cast<int>( nn_outputs[2] ); // Direction index (0-6)
+        int actionType = static_cast<int>( nn_outputs[0] );
+        int positionNumX = static_cast<int>( nn_outputs[1] );
+        int positionNumY = static_cast<int>( nn_outputs[2] );
+        int attackTargetPositonX = static_cast<int>( nn_outputs[3] );
+        int attackTargetPositonY = static_cast<int>( nn_outputs[4] );
 
-        // int attack_direction = ( attack_direction >= 6 ? -1 : 1 << attack_direction ); // Convert to actual direction (1,2,4,8,16,32) or -1 for archery
-        int attack_direction = Battle::Board::GetDirectionFromIndices( positionNum, attackTargetPositon, arena.GetBoard()->widthInCells );
-        int currentUnitUID = currentUnit.GetUID(); // Current unit UID
+        // Use the coordinates to get the board index
+        int positionNum = arena.GetBoard()->GetIndexAbsPosition( fheroes2::Point( positionNumX, positionNumY ) );
+        int attackTargetPosition = arena.GetBoard()->GetIndexAbsPosition( fheroes2::Point( attackTargetPositonX, attackTargetPositonY ) );
 
+        int attack_direction = Battle::Board::GetDirection( positionNum, attackTargetPosition );
+        int currentUnitUID = static_cast<int>( currentUnit.GetUID() );
+
+        // Check for out-of-bounds coordinates
+        if ( positionNum < 0 || attackTargetPosition < 0 ) {
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Invalid coordinates generated by NN, defaulting to SKIP." << std::endl;
+            actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
+            return actions;
+        }
+
+        // Check if the chosen move position is the same as the current position.
+        // If so, and the action is MOVE, it's essentially a SKIP.
+        if ( actionType == 0 && positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {
+            if ( !NNAI::skipDebugLog )
+                std::cout << "Selected MOVE to the current position. Changing to SKIP." << std::endl;
+            actionType = 3;
+        }
+
+        // Process SPELLCAST as ATTACK
         if ( actionType == 2 ) {
             actionType = 1;
             if ( !NNAI::skipDebugLog )
-                std::cout << "Spellcasting is not implemented treating as ATTACK" << std::endl;
+                std::cout << "Spellcasting is not implemented, treating as ATTACK." << std::endl;
         }
 
         int targetUnitUID = -1;
-        auto cell = arena.GetBoard()->GetCell( attackTargetPositon );
-        if ( cell ) {
-            auto unit = cell->GetUnit();
+        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPosition );
+        if ( targetCell ) {
+            const auto * unit = targetCell->GetUnit();
             if ( unit ) {
                 targetUnitUID = unit->GetUID();
             }
         }
 
-        // int attackTargetPositon = arena.GetBoard()->GetIndexDirection( positionNum, attack_direction );
-        if ( attack_direction == -1 && targetUnitUID != -1 && currentUnit.GetShots() > 0 ) {
-            positionNum = -1;
+        targetUnitUID = static_cast<int>( targetUnitUID );
+
+        // Handle archery attacks
+        if ( attack_direction == 0 && targetUnitUID != -1 && currentUnit.GetShots() > 0 ) {
+            attack_direction = -1; // -1 indicates archery attack
+            positionNum = -1; // No move needed for archery attack
         }
 
-        if ( positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {
-            positionNum = -1; // Attack in place required format
-        }
-
-        if ( positionNum == -1 && actionType == 0 ) {
-            actionType = 3; // SKIP move to already ocupied slot
+        // If unit wants to attack a non-existent unit, check if it's a valid move.
+        if ( actionType == 1 && targetUnitUID == -1 ) {
             if ( !NNAI::skipDebugLog )
-                std::cout << "Position " << positionNum << " is already occupied by unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
+                std::cout << "Attempting to ATTACK a non-existent unit. Changing to MOVE." << std::endl;
+            actionType = 0;
         }
-        if ( !NNAI::skipDebugLog )
-            std::cout << std::endl
-                      << "Action Type: " << actionType << ", Position Num: " << positionNum << ", Attack Direction: " << attack_direction
-                      << ", Current Unit UID: " << currentUnitUID << ", Target unit UID: " << targetUnitUID << ", Attack Target Position: " << attackTargetPositon
-                      << std::endl;
 
+        // Final validation of actions
         if ( actionType == 1
-             && ( targetUnitUID == -1
-                  || !CheckAttackParameters( &currentUnit, arena.GetBoard()->GetCell( attackTargetPositon )->GetUnit(), positionNum, attackTargetPositon,
-                                             attack_direction ) ) ) {
-            actionType = 0; // Move instead of attack if attack would be illegal
+             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPosition, attack_direction ) ) {
             if ( !NNAI::skipDebugLog )
-                std::cout << "Attack to position " << attackTargetPositon << " is not available for unit " << currentUnitUID << ". Changing to MOVE." << std::endl;
+                std::cout << "Illegal ATTACK action. Changing to MOVE." << std::endl;
+            actionType = 0;
         }
+
         if ( actionType == 0 && !CheckMoveParameters( &currentUnit, positionNum ) ) {
-            actionType = 3; // SKIP move to illegal positon ends up as SKIP
             if ( !NNAI::skipDebugLog )
-                std::cout << "Position " << positionNum << " is not available for unit " << currentUnitUID << ". Defaulting to SKIP." << std::endl;
+                std::cout << "Illegal MOVE action. Defaulting to SKIP." << std::endl;
+            actionType = 3;
+        }
+
+        if ( !NNAI::skipDebugLog ) {
+            std::cout << "\nFinal Action Selection:" << std::endl;
+            std::cout << "Action Type: " << actionType << ", Move Position Index: " << positionNum << ", Attack Direction: " << attack_direction
+                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPosition
+                      << std::endl;
         }
 
         switch ( actionType ) {
         case 0:
-            // MOVE: [CommandType, unitUID, targetCell
             actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
             break;
         case 1:
-            // ATTACK: [CommandType, unitUID, targetUnitUID, moveTargetIdx, attackTargetIdx, attackDirection]
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attack_direction );
-            // TODO
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPosition, attack_direction );
             break;
-        case 2:
-            // SPELLCAST: [CommandType, spellID, targetCell]
-            // actions.emplace_back( Battle::Command::SPELLCAST, nn_output[1], nn_output[2] ); //Spellcast is disabled due to complexity exiting NN scope
-            // actions.emplace_back( Battle::Command::SKIP, currentUnitUID )
-            actionType = 3; // Spellcast is disabled due to complexity exiting NN scope
-            // break;
         case 3:
-            // SKIP: [CommandType, unitUID]
-            actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
-            break;
         default:
-            // Unknown command, fallback to SKIP
             actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
             break;
         }
@@ -284,29 +298,36 @@ namespace NNAI
     std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
         std::vector<float> features;
+        fheroes2::Rect cellRect = unit.GetPosition().GetHead()->GetPos();
 
-        features.push_back( unit.GetUID() ); // Unique ID
-        features.push_back( normalize( unit.GetCount(), 0, 300 ) ); // Normalize HP
-        features.push_back( normalize( unit.GetHitPoints(), 0, 500 ) ); // Normalize HP
-        features.push_back( normalize( unit.GetSpeed( false, true ), 0, 10 ) ); // Normalize speed
-        features.push_back( normalize( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ), 0, 50 ) ); // Distance to current unit
-        features.push_back( normalize( unit.GetAttack(), 0, 100 ) ); // Normalize attack
-        features.push_back( normalize( unit.GetDefense(), 0, 100 ) ); // Normalize defense
+        features.push_back( static_cast<float>( unit.GetUID() ) ); // Unique ID
+        features.push_back( normalize( static_cast<float>( cellRect.x ), 0, 11 ) ); // Position X (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( cellRect.y ), 0, 9 ) ); // Position Y (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) ); // Normalize Count
+        features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) ); // Normalize HP
+        features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) ); // Normalize speed
+        features.push_back(
+            normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ), 0, 50 ) ); // Distance to current unit
+        features.push_back( normalize( static_cast<float>( unit.GetAttack() ), 0, 100 ) ); // Normalize attack
+        features.push_back( normalize( static_cast<float>( unit.GetDefense() ), 0, 100 ) ); // Normalize defense
         features.push_back( unit.isFlying() ? 1.0f : 0.0f ); // Is flying
         features.push_back( unit.isArchers() ? 1.0f : 0.0f ); // Is archer
-        features.push_back( normalize( unit.GetShots(), 0, 50 ) ); // Normalize shots left
+        features.push_back( normalize( static_cast<float>( unit.GetShots() ), 0, 50 ) ); // Normalize shots left
         features.push_back( unit.isHandFighting() ? 1.0f : 0.0f ); // Is hand fighting
         features.push_back( unit.isWide() ? 1.0f : 0.0f ); // Is wide
         features.push_back( unit.isAffectedByMorale() ? 1.0f : 0.0f ); // Affected by morale
         features.push_back( unit.isImmovable() ? 1.0f : 0.0f ); // Is immovable
-        features.push_back( normalize( unit.GetMorale(), 0, 100 ) ); // Morale
-        features.push_back( normalize( unit.GetLuck(), 0, 100 ) ); // Luck
-        features.push_back( unit.GetColor() ); // Ally or enemy color
-        features.push_back( normalize( unit.GetPosition().GetHead()->GetIndex(), 0, 100 ) ); // Position (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( unit.GetMorale() ), 0, 100 ) ); // Morale
+        features.push_back( normalize( static_cast<float>( unit.GetLuck() ), 0, 100 ) ); // Luck
+        features.push_back( static_cast<float>( unit.GetColor() ) ); // Ally or enemy color
+
         currentunit.GetColor() == unit.GetColor() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Is current unit ally or foe
         unit.GetColor() == arena.GetArmy1Color() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Left or right
         unit.Modes( Battle::TR_MOVED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Moved this turn
         unit.Modes( Battle::TR_RESPONDED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Responded this turn
+        arena.GetBoard()->CanAttackTargetFromPosition( currentunit, unit, arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) )
+            ? features.push_back( 1.0f )
+            : features.push_back( 0.0f ); // Can attack target from position
 
         return features;
     }
@@ -314,8 +335,6 @@ namespace NNAI
     torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         // Get all units for both sides
-        int _myColor = currentUnit.GetCurrentColor();
-
         const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
         const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
@@ -380,7 +399,7 @@ namespace NNAI
         return input;
     }
 
-    void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion )
+    void trainingGameLoop( bool /*isFirstGameRun*/, bool /*isProbablyDemoVersion*/ )
     {
         fheroes2::GameMode result = fheroes2::GameMode::NEW_BATTLE_ONLY;
 
@@ -464,19 +483,19 @@ namespace NNAI
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).view( { -1 } );
 
         std::vector<torch::Tensor> action_batches;
-        for ( int h = 0; h < 3; ++h )
+        for ( int h = 0; h < 5; ++h )
             action_batches.push_back( torch::stack( actions[h] ).to( device ) );
 
         int64_t T = std::min( { state_batch.size( 0 ), reward_batch.size( 0 ), action_batches[0].size( 0 ) } );
         state_batch = state_batch.slice( 0, 0, T );
         reward_batch = reward_batch.slice( 0, 0, T );
-        for ( int h = 0; h < 3; ++h )
+        for ( int h = 0; h < 5; ++h )
             action_batches[h] = action_batches[h].slice( 0, 0, T );
 
         optimizer.zero_grad();
         auto logits = model->forward( state_batch );
 
-        if ( logits.size() != 3 || action_batches.size() != 3 ) {
+        if ( logits.size() != 5 || action_batches.size() != 5 ) {
             std::cerr << "Warning: Invalid logits or action batches for model" << model_id << "\n";
             return;
         }

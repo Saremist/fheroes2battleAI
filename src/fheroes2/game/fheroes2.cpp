@@ -369,7 +369,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                 for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
                     std::vector<torch::Tensor> states1, states2;
-                    std::vector<std::vector<torch::Tensor>> actions1( 3 ), actions2( 3 );
+                    std::vector<std::vector<torch::Tensor>> actions1( 5 ), actions2( 5 );
                     std::vector<torch::Tensor> rewards1, rewards2;
 
                     NNAI::g_states1 = &states1;
@@ -578,7 +578,7 @@ int main( int argc, char ** argv )
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 4000, 0.0005, NNAI::device, /*games per epoch = */ 250 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 40000, 0.0005, NNAI::device, /*games per epoch = */ 250 );
     }
 
     NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );

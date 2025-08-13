@@ -14,6 +14,7 @@
 #include <battle_troop.h>
 #include <torch/torch.h>
 
+#include "battle_command.h"
 #include "ostream"
 
 namespace NNAI
@@ -47,61 +48,67 @@ namespace NNAI
 
     extern torch::Device device;
 
+#include <torch/torch.h>
+
     struct BattleLSTMImpl : torch::nn::Module
     {
         torch::nn::LSTM lstm_layer{ nullptr };
 
         // Output heads
         torch::nn::Linear action_type_head{ nullptr }; // 4 types: SKIP, MOVE, ATTACK, SPELLCAST
-        torch::nn::Linear position_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (position index 0-98)
-        torch::nn::Linear destination_head{ nullptr }; // For ATTACK (position index 0-98)
+        torch::nn::Linear position_x_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (x coordinate)
+        torch::nn::Linear position_y_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (y coordinate)
+        torch::nn::Linear destination_x_head{ nullptr }; // For ATTACK (x coordinate)
+        torch::nn::Linear destination_y_head{ nullptr }; // For ATTACK (y coordinate)
 
-        BattleLSTMImpl( int64_t input_size = 22, int64_t hidden_size = 128, int64_t num_layers = 1 )
+        BattleLSTMImpl( int64_t input_size = 24, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
-            , position_head( hidden_size, 99 )
-            , destination_head( hidden_size, 99 )
+            , position_x_head( hidden_size, 11 )
+            , position_y_head( hidden_size, 9 )
+            , destination_x_head( hidden_size, 11 )
+            , destination_y_head( hidden_size, 9 )
         {
             register_module( "lstm_layer", lstm_layer );
             register_module( "action_type_head", action_type_head );
-            register_module( "position_head", position_head );
-            register_module( "destination_head", destination_head );
+            register_module( "position_x_head", position_x_head );
+            register_module( "position_y_head", position_y_head );
+            register_module( "destination_x_head", destination_x_head );
+            register_module( "destination_y_head", destination_y_head );
 
             // --- Initialize LSTM ---
             for ( int layer = 0; layer < num_layers; ++layer ) {
                 torch::NoGradGuard no_grad;
-                // Use named_parameters() to access by string key
-                auto params = lstm_layer->named_parameters();
-                auto w_ih = params.find( "weight_ih_l" + std::to_string( layer ) );
-                auto w_hh = params.find( "weight_hh_l" + std::to_string( layer ) );
-                auto b_ih = params.find( "bias_ih_l" + std::to_string( layer ) );
-                auto b_hh = params.find( "bias_hh_l" + std::to_string( layer ) );
-
-                if ( w_hh != nullptr )
-                    torch::nn::init::orthogonal_( *w_hh );
-                if ( w_ih != nullptr )
-                    torch::nn::init::xavier_uniform_( *w_ih );
-                if ( b_ih != nullptr )
-                    b_ih->zero_();
-                if ( b_hh != nullptr )
-                    b_hh->zero_();
-
-                // Forget gate bias to 1.0
-                int64_t hidden = hidden_size;
-                if ( b_ih != nullptr )
-                    b_ih->slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
-                if ( b_hh != nullptr )
-                    b_hh->slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
+                for ( auto & param : lstm_layer->named_parameters() ) {
+                    if ( param.key().find( "weight" ) != std::string::npos ) {
+                        if ( param.key().find( "ih" ) != std::string::npos ) {
+                            torch::nn::init::xavier_uniform_( param.value() );
+                        }
+                        else if ( param.key().find( "hh" ) != std::string::npos ) {
+                            torch::nn::init::orthogonal_( param.value() );
+                        }
+                    }
+                    else if ( param.key().find( "bias" ) != std::string::npos ) {
+                        param.value().zero_();
+                        // Forget gate bias to 1.0
+                        int64_t hidden = hidden_size;
+                        param.value().slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
+                    }
+                }
             }
 
             // --- Initialize output heads (Xavier) ---
             torch::nn::init::xavier_uniform_( action_type_head->weight );
-            torch::nn::init::xavier_uniform_( position_head->weight );
-            torch::nn::init::xavier_uniform_( destination_head->weight );
+            torch::nn::init::xavier_uniform_( position_x_head->weight );
+            torch::nn::init::xavier_uniform_( position_y_head->weight );
+            torch::nn::init::xavier_uniform_( destination_x_head->weight );
+            torch::nn::init::xavier_uniform_( destination_y_head->weight );
 
             torch::nn::init::constant_( action_type_head->bias, 0 );
-            torch::nn::init::constant_( position_head->bias, 0 );
-            torch::nn::init::constant_( destination_head->bias, 0 );
+            torch::nn::init::constant_( position_x_head->bias, 0 );
+            torch::nn::init::constant_( position_y_head->bias, 0 );
+            torch::nn::init::constant_( destination_x_head->bias, 0 );
+            torch::nn::init::constant_( destination_y_head->bias, 0 );
         }
 
         std::vector<torch::Tensor> forward( torch::Tensor x )
@@ -116,10 +123,12 @@ namespace NNAI
 
             // Output multiple heads
             torch::Tensor action_type_logits = action_type_head( last_timestep );
-            torch::Tensor position_logits = position_head( last_timestep );
-            torch::Tensor destination_logits = destination_head( last_timestep );
+            torch::Tensor position_x_logits = position_x_head( last_timestep );
+            torch::Tensor position_y_logits = position_y_head( last_timestep );
+            torch::Tensor destination_x_logits = destination_x_head( last_timestep );
+            torch::Tensor destination_y_logits = destination_y_head( last_timestep );
 
-            return { action_type_logits, position_logits, destination_logits };
+            return { action_type_logits, position_x_logits, position_y_logits, destination_x_logits, destination_y_logits };
         }
     };
 
@@ -151,11 +160,6 @@ namespace NNAI
 } // NNAI
 
 void PrintUnitInfo( const Battle::Unit & unit );
-
-#include <string>
-
-#include "battle_command.h"
-#include "ostream"
 
 namespace Battle
 {
