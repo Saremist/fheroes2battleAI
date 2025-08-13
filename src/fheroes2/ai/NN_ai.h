@@ -64,10 +64,10 @@ namespace NNAI
         BattleLSTMImpl( int64_t input_size = 24, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
-            , position_x_head( hidden_size, 11 )
-            , position_y_head( hidden_size, 9 )
-            , destination_x_head( hidden_size, 11 )
-            , destination_y_head( hidden_size, 9 )
+            , position_x_head( hidden_size, 9 )
+            , position_y_head( hidden_size, 11 )
+            , destination_x_head( hidden_size, 9 )
+            , destination_y_head( hidden_size, 11 )
         {
             register_module( "lstm_layer", lstm_layer );
             register_module( "action_type_head", action_type_head );
