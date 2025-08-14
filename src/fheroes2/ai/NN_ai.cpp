@@ -233,10 +233,8 @@ namespace NNAI
             }
         }
 
-        targetUnitUID = static_cast<int>( targetUnitUID );
-
         // Handle archery attacks
-        if ( attackDirection == 0 && targetUnitUID != -1 && currentUnit.GetShots() > 0 ) {
+        if ( currentUnit.GetShots() > 0 ) {
             attackDirection = -1; // -1 indicates archery attack
             positionNum = -1; // No move needed for archery attack
         }
