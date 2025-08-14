@@ -369,7 +369,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                 for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
                     std::vector<torch::Tensor> states1, states2;
-                    std::vector<std::vector<torch::Tensor>> actions1( 5 ), actions2( 5 );
+                    std::vector<std::vector<torch::Tensor>> actions1( 4 ), actions2( 4 );
                     std::vector<torch::Tensor> rewards1, rewards2;
 
                     NNAI::g_states1 = &states1;

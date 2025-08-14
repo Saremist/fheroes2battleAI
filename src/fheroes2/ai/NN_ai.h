@@ -58,23 +58,26 @@ namespace NNAI
         torch::nn::Linear action_type_head{ nullptr }; // 4 types: SKIP, MOVE, ATTACK, SPELLCAST
         torch::nn::Linear position_x_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (x coordinate)
         torch::nn::Linear position_y_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (y coordinate)
-        torch::nn::Linear destination_x_head{ nullptr }; // For ATTACK (x coordinate)
-        torch::nn::Linear destination_y_head{ nullptr }; // For ATTACK (y coordinate)
+        torch::nn::Linear direction_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (y coordinate)
+        // torch::nn::Linear destination_x_head{ nullptr }; // For ATTACK (x coordinate)
+        // torch::nn::Linear destination_y_head{ nullptr }; // For ATTACK (y coordinate)
 
         BattleLSTMImpl( int64_t input_size = 24, int64_t hidden_size = 128, int64_t num_layers = 1 )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_x_head( hidden_size, 9 )
             , position_y_head( hidden_size, 11 )
-            , destination_x_head( hidden_size, 9 )
-            , destination_y_head( hidden_size, 11 )
+            , direction_head( hidden_size, 7 )
+        //, destination_x_head( hidden_size, 9 )
+        //, destination_y_head( hidden_size, 11 )
         {
             register_module( "lstm_layer", lstm_layer );
             register_module( "action_type_head", action_type_head );
             register_module( "position_x_head", position_x_head );
             register_module( "position_y_head", position_y_head );
-            register_module( "destination_x_head", destination_x_head );
-            register_module( "destination_y_head", destination_y_head );
+            register_module( "direction_head", direction_head );
+            // register_module( "destination_x_head", destination_x_head );
+            // register_module( "destination_y_head", destination_y_head );
 
             // --- Initialize LSTM ---
             for ( int layer = 0; layer < num_layers; ++layer ) {
@@ -101,14 +104,16 @@ namespace NNAI
             torch::nn::init::xavier_uniform_( action_type_head->weight );
             torch::nn::init::xavier_uniform_( position_x_head->weight );
             torch::nn::init::xavier_uniform_( position_y_head->weight );
-            torch::nn::init::xavier_uniform_( destination_x_head->weight );
-            torch::nn::init::xavier_uniform_( destination_y_head->weight );
+            torch::nn::init::xavier_uniform_( direction_head->weight );
+            // torch::nn::init::xavier_uniform_( destination_x_head->weight );
+            // torch::nn::init::xavier_uniform_( destination_y_head->weight );
 
             torch::nn::init::constant_( action_type_head->bias, 0 );
             torch::nn::init::constant_( position_x_head->bias, 0 );
             torch::nn::init::constant_( position_y_head->bias, 0 );
-            torch::nn::init::constant_( destination_x_head->bias, 0 );
-            torch::nn::init::constant_( destination_y_head->bias, 0 );
+            torch::nn::init::constant_( direction_head->bias, 0 );
+            // torch::nn::init::constant_( destination_x_head->bias, 0 );
+            // torch::nn::init::constant_( destination_y_head->bias, 0 );
         }
 
         std::vector<torch::Tensor> forward( torch::Tensor x )
@@ -125,10 +130,12 @@ namespace NNAI
             torch::Tensor action_type_logits = action_type_head( last_timestep );
             torch::Tensor position_x_logits = position_x_head( last_timestep );
             torch::Tensor position_y_logits = position_y_head( last_timestep );
-            torch::Tensor destination_x_logits = destination_x_head( last_timestep );
-            torch::Tensor destination_y_logits = destination_y_head( last_timestep );
+            torch::Tensor direction_logits = direction_head( last_timestep );
+            // torch::Tensor destination_x_logits = destination_x_head( last_timestep );
+            // torch::Tensor destination_y_logits = destination_y_head( last_timestep );
 
-            return { action_type_logits, position_x_logits, position_y_logits, destination_x_logits, destination_y_logits };
+            return { action_type_logits, position_x_logits, position_y_logits, direction_logits };
+            // return { action_type_logits, position_x_logits, position_y_logits, destination_x_logits, destination_y_logits };
         }
     };
 
