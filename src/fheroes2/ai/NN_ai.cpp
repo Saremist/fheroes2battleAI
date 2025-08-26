@@ -38,6 +38,7 @@ namespace NNAI
 
     bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
     bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
+    bool isComparing = true; // Defines if game is comparing NNAI with Original AI
 
     int m1WinCount = 0;
     int m2WinCount = 0;
@@ -111,8 +112,16 @@ namespace NNAI
         }
     }
 
-    bool isNNControlled( int /*color*/ )
+    bool isNNControlled( int color )
     {
+        if ( isComparing ) {
+            switch ( color ) {
+            case 0x01: // BLUE
+                return true;
+            case 0x04: // RED
+                return false;
+            }
+        }
         return true; // TODO Placeholder for actual logic to determine if the AI is controlled by NN
     }
 

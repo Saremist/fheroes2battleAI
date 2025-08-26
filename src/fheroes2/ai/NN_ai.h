@@ -42,6 +42,7 @@ namespace NNAI
 
     extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
     extern bool skipDebugLog; // Defines if post battle dialog will open or the training loop will continue
+    extern bool isComparing; // Defines if game is comparing NNAI with Original AI
 
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
     extern int prevEnemyHP2, prevAllyHP2, prevEnemyUnits2, prevAllyUnits2;

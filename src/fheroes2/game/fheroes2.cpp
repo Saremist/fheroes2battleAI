@@ -355,6 +355,10 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 BattleLSTM & model3 = std::get<4>( selection );
                 std::string name3 = std::get<5>( selection );
 
+                if ( NNAI::isComparing ) {
+                    name2 = "Original AI";
+                }
+
                 model1->train();
                 model2->train();
                 NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( model1 );
@@ -382,8 +386,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
                     NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1 );
-                    NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
-
+                    if ( !NNAI::isComparing ) {
+                        NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
+                    }
                     ++game_count;
                 }
                 auto epoch_end = std::chrono::steady_clock::now();
@@ -556,10 +561,15 @@ int main( int argc, char ** argv )
     char debug_input = 'n';
     std::cin >> debug_input;
 
+    std::cout << "Disable Orginal AI comperasing mode? (y/n): ";
+    char compare_input = 'n';
+    std::cin >> compare_input;
+
     // Set isTraining based on user input
     // Note: isTraining must be non-const and not constexpr in NN_ai.h for this to work!
     NNAI::isTraining = ( train_input == 'y' || train_input == 'Y' );
     NNAI::skipDebugLog = ( debug_input == 'y' || debug_input == 'Y' );
+    NNAI::isComparing = !( compare_input == 'y' || compare_input == 'Y' );
 
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
