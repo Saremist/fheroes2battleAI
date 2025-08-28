@@ -166,8 +166,8 @@ namespace NNAI
                 head_actions.push_back( torch::tensor( val, torch::TensorOptions().dtype( torch::kLong ).device( NNAI::device ) ) );
             }
 
-            if ( head_actions.size() != 4 ) {
-                std::cerr << "Warning: Expected 4 heads, got " << head_actions.size() << std::endl;
+            if ( head_actions.size() != 5 ) {
+                std::cerr << "Warning: Expected 5 heads, got " << head_actions.size() << std::endl;
                 return {};
             }
 
@@ -177,7 +177,7 @@ namespace NNAI
                 if ( NNAI::g_states1 )
                     NNAI::g_states1->push_back( squeezed_input.to( NNAI::device ) );
                 if ( NNAI::g_actions1 ) {
-                    for ( size_t h = 0; h < 4; ++h ) {
+                    for ( size_t h = 0; h < 5; ++h ) {
                         ( *NNAI::g_actions1 )[h].push_back( head_actions[h].to( NNAI::device ) );
                     }
                 }
@@ -186,7 +186,7 @@ namespace NNAI
                 if ( NNAI::g_states2 )
                     NNAI::g_states2->push_back( squeezed_input.to( NNAI::device ) );
                 if ( NNAI::g_actions2 ) {
-                    for ( size_t h = 0; h < 4; ++h ) {
+                    for ( size_t h = 0; h < 5; ++h ) {
                         ( *NNAI::g_actions2 )[h].push_back( head_actions[h].to( NNAI::device ) );
                     }
                 }
@@ -202,20 +202,20 @@ namespace NNAI
         int actionType = static_cast<int>( nn_outputs[0] );
         int positionNumX = static_cast<int>( nn_outputs[1] );
         int positionNumY = static_cast<int>( nn_outputs[2] );
-        int directionOutput = static_cast<int>( nn_outputs[3] );
+        // int directionOutput = static_cast<int>( nn_outputs[3] );
 
-        // int attackTargetPositonX = static_cast<int>( nn_outputs[3] );
-        // int attackTargetPositonY = static_cast<int>( nn_outputs[4] );
+        int attackTargetPositonX = static_cast<int>( nn_outputs[3] );
+        int attackTargetPositonY = static_cast<int>( nn_outputs[4] );
 
         // Use the coordinates to get the board index
         int positionNum = getIndexFromXY( positionNumX, positionNumY );
 
-        // int attackTargetPosition = getIndexFromXY( attackTargetPositonX, attackTargetPositonY );
+        int attackTargetPosition = getIndexFromXY( attackTargetPositonX, attackTargetPositonY );
+        int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
 
-        int attackDirection = ( directionOutput >= 6 ? -1 : 1 << directionOutput );
-        int attackTargetPositon = Battle::Board::GetIndexDirection( positionNum, attackDirection );
+        // int attackDirection = ( directionOutput >= 6 ? -1 : 1 << directionOutput );
+        // int attackTargetPositon = Battle::Board::GetIndexDirection( positionNum, attackDirection );
 
-        // int attack_direction = Battle::Board::GetDirection( positionNum, attackTargetPosition );
         int currentUnitUID = static_cast<int>( currentUnit.GetUID() );
 
         // Check if the chosen move position is the same as the current position.
@@ -394,6 +394,8 @@ namespace NNAI
             }
         }
 
+        // std::cout << input << std::endl;
+
         return input;
     }
 
@@ -481,19 +483,19 @@ namespace NNAI
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).view( { -1 } );
 
         std::vector<torch::Tensor> action_batches;
-        for ( int h = 0; h < 4; ++h )
+        for ( int h = 0; h < 5; ++h )
             action_batches.push_back( torch::stack( actions[h] ).to( device ) );
 
         int64_t T = std::min( { state_batch.size( 0 ), reward_batch.size( 0 ), action_batches[0].size( 0 ) } );
         state_batch = state_batch.slice( 0, 0, T );
         reward_batch = reward_batch.slice( 0, 0, T );
-        for ( int h = 0; h < 4; ++h )
+        for ( int h = 0; h < 5; ++h )
             action_batches[h] = action_batches[h].slice( 0, 0, T );
 
         optimizer.zero_grad();
         auto logits = model->forward( state_batch );
 
-        if ( logits.size() != 4 || action_batches.size() != 4 ) {
+        if ( logits.size() != 5 || action_batches.size() != 5 ) {
             std::cerr << "Warning: Invalid logits or action batches for model" << model_id << "\n";
             return;
         }
