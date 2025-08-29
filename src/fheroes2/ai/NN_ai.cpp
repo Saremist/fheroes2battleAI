@@ -22,12 +22,12 @@
 
 namespace NNAI
 {
-    std::shared_ptr<BattleLSTM> g_model1 = nullptr;
-    std::shared_ptr<BattleLSTM> g_model2 = nullptr;
+    std::shared_ptr<BattleNN> g_model1 = nullptr;
+    std::shared_ptr<BattleNN> g_model2 = nullptr;
     // Global model pointers for each color
-    std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_green = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_red = nullptr;
+    std::shared_ptr<BattleNN> g_model_blue = nullptr;
+    std::shared_ptr<BattleNN> g_model_green = nullptr;
+    std::shared_ptr<BattleNN> g_model_red = nullptr;
 
     std::vector<torch::Tensor> * g_states1 = nullptr;
     std::vector<std::vector<torch::Tensor>> * g_actions1 = nullptr;
@@ -58,10 +58,12 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = 24, hidden_size = 128, num_layers = 1;
+        int64_t input_size = 240, hidden_size = 128, num_layers = 1;
+        // int64_t input_size = 24, hidden_size = 128, num_layers = 1; //LSTM
 
         try {
-            BattleLSTM model( input_size, hidden_size, num_layers );
+            BattleNN model( input_size, hidden_size );
+            // BattleNN model( input_size, hidden_size, num_layers );
             torch::save( model, model_path );
         }
         catch ( const std::exception & e ) {
@@ -69,7 +71,7 @@ namespace NNAI
         }
     }
 
-    void saveModel( const BattleLSTM & model, const std::string & model_path )
+    void saveModel( const BattleNN & model, const std::string & model_path )
     {
         try {
             torch::save( model, model_path );
@@ -80,7 +82,7 @@ namespace NNAI
         }
     }
 
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path )
+    void loadModel( std::shared_ptr<BattleNN> & modelPtr, const std::string & model_path )
     {
         namespace fs = std::filesystem;
         try {
@@ -88,7 +90,7 @@ namespace NNAI
                 std::cerr << "Model file does not exist at " << model_path << ". Creating new model..." << std::endl;
                 createAndSaveModel( model_path );
             }
-            modelPtr = std::make_shared<BattleLSTM>();
+            modelPtr = std::make_shared<BattleNN>();
             torch::load( *modelPtr, model_path );
             modelPtr->get()->to( device ); // Move model to device after loading
             std::cout << "Model loaded from " << model_path << std::endl;
@@ -99,7 +101,7 @@ namespace NNAI
         }
     }
 
-    std::shared_ptr<BattleLSTM> getModelByColor( int color )
+    std::shared_ptr<BattleNN> getModelByColor( int color )
     {
         switch ( color ) {
         case 0x01: // BLUE
@@ -131,7 +133,7 @@ namespace NNAI
             return {};
         }
 
-        BattleLSTM & model = *getModelByColor( currentUnit.GetColor() );
+        BattleNN & model = *getModelByColor( currentUnit.GetColor() );
 
         if ( !model ) {
             std::cerr << "Error: Neural network model is not initialized!" << std::endl;
@@ -139,6 +141,21 @@ namespace NNAI
         }
 
         torch::Tensor input = prepareBattleLSTMInput( arena, currentUnit );
+
+        input = input.view( { input.size( 0 ), -1 } ); // change shape input sizes: [1, 10, 24] to [1, 240] flatten seq_len * feature_size
+
+        //// shape()
+        //{
+        //    const auto dims = input.sizes();
+        //    std::cout << "input sizes: [";
+        //    for ( size_t i = 0; i < dims.size(); ++i ) {
+        //        std::cout << dims[i];
+        //        if ( i + 1 < dims.size() )
+        //            std::cout << ", ";
+        //    }
+        //    std::cout << "]" << std::endl;
+        //}
+
         if ( currentUnit.GetCount() == 0 ) {
             return {};
         }
@@ -147,7 +164,8 @@ namespace NNAI
 
         std::vector<int64_t> nn_outputs;
         for ( const auto & head_output : nn_output ) {
-            auto probs = torch::nn::functional::softmax( head_output, /*dim=*/1 );
+            // auto probs = torch::nn::functional::softmax( head_output, /*dim=*/1 ); //LSTM VERISON
+            auto probs = torch::nn::functional::softmax( head_output, /*dim=*/0 );
             probs = probs.clamp( 0, 1 ).nan_to_num( 0.0, 0.0, 0.0 );
 
             if ( !probs.isfinite().all().item<bool>() || probs.min().item<float>() < 0 ) {
@@ -157,6 +175,7 @@ namespace NNAI
 
             auto sampled = probs.multinomial( /*num_samples=*/1 );
             nn_outputs.push_back( sampled.item<int64_t>() );
+            // nn_outputs.push_back( sampled.item<int64_t>() ); //LSTM VERISON
         }
 
         if ( NNAI::isTraining ) {
@@ -234,7 +253,7 @@ namespace NNAI
         }
 
         int targetUnitUID = -1;
-        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPositon );
+        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPosition );
         if ( targetCell ) {
             const auto * unit = targetCell->GetUnit();
             if ( unit ) {
@@ -257,7 +276,7 @@ namespace NNAI
 
         // Final validation of actions
         if ( actionType == 1
-             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPositon, attackDirection ) ) {
+             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPosition, attackDirection ) ) {
             if ( !NNAI::skipDebugLog )
                 std::cout << "Illegal ATTACK action. Changing to MOVE." << std::endl;
             actionType = 0;
@@ -272,7 +291,7 @@ namespace NNAI
         if ( !NNAI::skipDebugLog ) {
             std::cout << "\nFinal Action Selection:" << std::endl;
             std::cout << "Action Type: " << actionType << ", Move Position Index: " << positionNum << ", Attack Direction: " << attackDirection
-                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPositon
+                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPosition
                       << std::endl;
         }
 
@@ -281,7 +300,7 @@ namespace NNAI
             actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
             break;
         case 1:
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attackDirection );
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
             break;
         case 3:
         default:
@@ -432,10 +451,10 @@ namespace NNAI
             }
         }
     }
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
+    std::tuple<BattleNN &, std::string, BattleNN &, std::string, BattleNN &, std::string> SelectRandomModels()
     {
         // Pair each model pointer with its name
-        std::vector<std::pair<std::shared_ptr<BattleLSTM>, std::string>> models
+        std::vector<std::pair<std::shared_ptr<BattleNN>, std::string>> models
             = { { g_model_blue, "blue" },     { g_model_green, "green" },   { g_model_red, "red" }/*,
                 { g_model_yellow, "yellow" }, { g_model_orange, "orange" }, { g_model_purple, "purple" }*/ };
 
@@ -464,7 +483,7 @@ namespace NNAI
         return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second, *models[idx3].first, models[idx3].second );
     }
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+    void tryTrainModel( BattleNN & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id )
     {
