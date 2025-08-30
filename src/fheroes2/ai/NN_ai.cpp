@@ -204,13 +204,13 @@ namespace NNAI
         int positionNumY = static_cast<int>( nn_outputs[2] );
         // int directionOutput = static_cast<int>( nn_outputs[3] );
 
-        int attackTargetPositonX = static_cast<int>( nn_outputs[3] );
-        int attackTargetPositonY = static_cast<int>( nn_outputs[4] );
+        int attackTargetPositionX = static_cast<int>( nn_outputs[3] );
+        int attackTargetPositionY = static_cast<int>( nn_outputs[4] );
 
         // Use the coordinates to get the board index
         int positionNum = getIndexFromXY( positionNumX, positionNumY );
 
-        int attackTargetPosition = getIndexFromXY( attackTargetPositonX, attackTargetPositonY );
+        int attackTargetPosition = getIndexFromXY( attackTargetPositionX, attackTargetPositionY );
         int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
 
         // int attackDirection = ( directionOutput >= 6 ? -1 : 1 << directionOutput );
@@ -234,7 +234,7 @@ namespace NNAI
         }
 
         int targetUnitUID = -1;
-        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPositon );
+        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPosition );
         if ( targetCell ) {
             const auto * unit = targetCell->GetUnit();
             if ( unit ) {
@@ -257,7 +257,7 @@ namespace NNAI
 
         // Final validation of actions
         if ( actionType == 1
-             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPositon, attackDirection ) ) {
+             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPosition, attackDirection ) ) {
             if ( !NNAI::skipDebugLog )
                 std::cout << "Illegal ATTACK action. Changing to MOVE." << std::endl;
             actionType = 0;
@@ -272,7 +272,7 @@ namespace NNAI
         if ( !NNAI::skipDebugLog ) {
             std::cout << "\nFinal Action Selection:" << std::endl;
             std::cout << "Action Type: " << actionType << ", Move Position Index: " << positionNum << ", Attack Direction: " << attackDirection
-                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPositon
+                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPosition
                       << std::endl;
         }
 
@@ -281,7 +281,7 @@ namespace NNAI
             actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
             break;
         case 1:
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPositon, attackDirection );
+            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
             break;
         case 3:
         default:
@@ -514,7 +514,7 @@ namespace NNAI
         torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
         const float entropy_coef = 0.01f;
 
-        for ( int h = 0; h < 3; ++h ) {
+        for ( int h = 0; h < 5; ++h ) {
             auto log_prob = torch::nn::functional::log_softmax( logits[h], 1 );
             auto prob = torch::exp( log_prob );
             auto entropy = -( prob * log_prob ).sum( 1 ).mean();
