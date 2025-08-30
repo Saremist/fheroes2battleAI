@@ -348,11 +348,11 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 auto epoch_start = std::chrono::steady_clock::now(); // CHRONO
 
                 auto selection = NNAI::SelectRandomModels();
-                BattleNN & model1 = std::get<0>( selection );
+                BattleLSTM & model1 = std::get<0>( selection );
                 std::string name1 = std::get<1>( selection );
-                BattleNN & model2 = std::get<2>( selection );
+                BattleLSTM & model2 = std::get<2>( selection );
                 std::string name2 = std::get<3>( selection );
-                BattleNN & model3 = std::get<4>( selection );
+                BattleLSTM & model3 = std::get<4>( selection );
                 std::string name3 = std::get<5>( selection );
 
                 if ( NNAI::isComparing ) {
@@ -361,8 +361,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                 model1->train();
                 model2->train();
-                NNAI::g_model1 = std::make_shared<NNAI::BattleNN>( model1 );
-                NNAI::g_model2 = std::make_shared<NNAI::BattleNN>( model2 );
+                NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( model1 );
+                NNAI::g_model2 = std::make_shared<NNAI::BattleLSTM>( model2 );
 
                 torch::optim::Adam optimizer1( model1->parameters(), torch::optim::AdamOptions( learning_rate ) );
                 torch::optim::Adam optimizer2( model2->parameters(), torch::optim::AdamOptions( learning_rate ) );
@@ -591,8 +591,8 @@ int main( int argc, char ** argv )
         return NNAI::training_main( argc, argv, /*epochs = */ 40000, 0.0005, NNAI::device, /*games per epoch = */ 250 );
     }
 
-    NNAI::g_model1 = std::make_shared<NNAI::BattleNN>( *NNAI::g_model_blue );
-    NNAI::g_model2 = std::make_shared<NNAI::BattleNN>( *NNAI::g_model_red );
+    NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );
+    NNAI::g_model2 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_red );
     NNAI::g_model1->get()->to( NNAI::device );
     NNAI::g_model2->get()->to( NNAI::device );
 
