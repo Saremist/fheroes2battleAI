@@ -480,6 +480,7 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
         assert( std::all_of( board.begin(), board.end(), []( const Cell & cell ) { return ( cell.GetUnit() == nullptr || cell.GetUnit()->isValid() ); } ) );
 
         Actions actions;
+        bool SkipingRoundFlag = false;
 
         if ( _interface ) {
             _interface->getPendingActions( actions );
@@ -494,11 +495,12 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
             // unit died or has become immovable during its turn without performing any action, its turn is still
             // considered completed.
             _currentUnit->SetModes( TR_MOVED );
-
             endOfTurn = true;
         }
+
         else if ( _currentUnit->Modes( MORALE_BAD ) ) {
             actions.emplace_back( Command::MORALE, _currentUnit->GetUID(), false );
+            SkipingRoundFlag = true;
         }
         else {
             // This unit will certainly perform at least one full-fledged action
@@ -524,16 +526,19 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
 
         while ( !actions.empty() ) {
             ApplyAction( actions.front() );
-            if ( NNAI::isTraining ) {
+            if ( NNAI::isTraining && !SkipingRoundFlag ) {
                 if ( _currentUnit->GetArmyColor() == _army1->GetColor() ) {
                     float reward1 = Battle::calculateReward( *this, this->GetArmy1Color() );
-                    NNAI::g_rewards1->push_back( torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ) );
+                    NNAI::g_rewards1.push_back(
+                        torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
                 }
                 else {
                     float reward2 = Battle::calculateReward( *this, this->GetArmy2Color() );
-                    NNAI::g_rewards2->push_back( torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ) );
+                    NNAI::g_rewards2.push_back(
+                        torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
                 }
             }
+            SkipingRoundFlag = false;
             actions.pop_front();
 
             board.removeDeadUnits();
@@ -550,6 +555,7 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
 
             if ( _currentUnit->AllModes( TR_MOVED | MORALE_GOOD ) && !_currentUnit->Modes( TR_SKIP ) && _currentUnit->GetSpeed( false, true ) > Speed::STANDING ) {
                 actions.emplace_back( Command::MORALE, _currentUnit->GetUID(), true );
+                SkipingRoundFlag = true;
             }
         }
 

@@ -376,18 +376,18 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     std::vector<std::vector<torch::Tensor>> actions1( HeadCount ), actions2( HeadCount );
                     std::vector<torch::Tensor> rewards1, rewards2;
 
-                    NNAI::g_states1 = &states1;
-                    NNAI::g_actions1 = &actions1;
-                    NNAI::g_rewards1 = &rewards1;
-                    NNAI::g_states2 = &states2;
-                    NNAI::g_actions2 = &actions2;
-                    NNAI::g_rewards2 = &rewards2;
+                    NNAI::g_states1 = states1;
+                    NNAI::g_actions1 = actions1;
+                    NNAI::g_rewards1 = rewards1;
+                    NNAI::g_states2 = states2;
+                    NNAI::g_actions2 = actions2;
+                    NNAI::g_rewards2 = rewards2;
 
                     NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
-                    NNAI::tryTrainModel( model1, optimizer1, states1, actions1, rewards1, total_loss1, epoch_total_reward1, device, 1 );
+                    NNAI::tryTrainModel( model1, optimizer1, g_states1, g_actions1, g_rewards1, total_loss1, epoch_total_reward1, device, 1 );
                     if ( !NNAI::isComparing ) {
-                        NNAI::tryTrainModel( model2, optimizer2, states2, actions2, rewards2, total_loss2, epoch_total_reward2, device, 2 );
+                        NNAI::tryTrainModel( model2, optimizer2, g_states2, g_actions2, g_rewards2, total_loss2, epoch_total_reward2, device, 2 );
                     }
                     ++game_count;
                 }
@@ -588,7 +588,7 @@ int main( int argc, char ** argv )
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 40000, 0.0005, NNAI::device, /*games per epoch = */ 250 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 40000, 0.0005, NNAI::device, /*games per epoch = */ 100 );
     }
 
     NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );

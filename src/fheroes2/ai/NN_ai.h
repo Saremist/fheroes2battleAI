@@ -20,6 +20,11 @@
 namespace NNAI
 {
     class BattleLSTM;
+
+    const int INPUT_SIZE = 240; // Size of the input feature vector
+    const int HIDDEN_SIZE = 128; // Size of the LSTM hidden state
+    const int LAYER_NUM = 1; // Number of LSTM layers
+
     extern std::shared_ptr<NNAI::BattleLSTM> g_model1;
     extern std::shared_ptr<NNAI::BattleLSTM> g_model2;
     // Global model pointers for each color
@@ -30,12 +35,12 @@ namespace NNAI
     extern std::shared_ptr<BattleLSTM> g_model_orange;
     extern std::shared_ptr<BattleLSTM> g_model_purple;
 
-    extern std::vector<torch::Tensor> * g_states1;
-    extern std::vector<std::vector<torch::Tensor>> * g_actions1;
-    extern std::vector<torch::Tensor> * g_rewards1;
-    extern std::vector<torch::Tensor> * g_states2;
-    extern std::vector<std::vector<torch::Tensor>> * g_actions2;
-    extern std::vector<torch::Tensor> * g_rewards2;
+    extern std::vector<torch::Tensor> g_states1;
+    extern std::vector<std::vector<torch::Tensor>> g_actions1;
+    extern std::vector<torch::Tensor> g_rewards1;
+    extern std::vector<torch::Tensor> g_states2;
+    extern std::vector<std::vector<torch::Tensor>> g_actions2;
+    extern std::vector<torch::Tensor> g_rewards2;
 
     extern int m1WinCount;
     extern int m2WinCount;
@@ -63,7 +68,7 @@ namespace NNAI
         torch::nn::Linear destination_x_head{ nullptr }; // For ATTACK (x coordinate)
         torch::nn::Linear destination_y_head{ nullptr }; // For ATTACK (y coordinate)
 
-        BattleLSTMImpl( int64_t input_size = 24, int64_t hidden_size = 128, int64_t num_layers = 1 )
+        BattleLSTMImpl( int64_t input_size = INPUT_SIZE, int64_t hidden_size = HIDDEN_SIZE, int64_t num_layers = LAYER_NUM )
             : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
             , action_type_head( hidden_size, 4 )
             , position_x_head( hidden_size, 9 )
