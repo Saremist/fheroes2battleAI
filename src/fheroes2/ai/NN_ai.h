@@ -47,9 +47,9 @@ namespace NNAI
     extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
     extern int prevEnemyHP2, prevAllyHP2, prevEnemyUnits2, prevAllyUnits2;
 
-    extern torch::Device device;
+    const int HeadCount = 5; // Number of output heads in the model
 
-#include <torch/torch.h>
+    extern torch::Device device;
 
     struct BattleLSTMImpl : torch::nn::Module
     {

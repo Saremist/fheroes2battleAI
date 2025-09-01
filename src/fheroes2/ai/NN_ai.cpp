@@ -166,8 +166,8 @@ namespace NNAI
                 head_actions.push_back( torch::tensor( val, torch::TensorOptions().dtype( torch::kLong ).device( NNAI::device ) ) );
             }
 
-            if ( head_actions.size() != 5 ) {
-                std::cerr << "Warning: Expected 5 heads, got " << head_actions.size() << std::endl;
+            if ( head_actions.size() != HeadCount ) {
+                std::cerr << "Warning: Expected " << HeadCount << " heads, got " << head_actions.size() << std::endl;
                 return {};
             }
 
@@ -177,7 +177,7 @@ namespace NNAI
                 if ( NNAI::g_states1 )
                     NNAI::g_states1->push_back( squeezed_input.to( NNAI::device ) );
                 if ( NNAI::g_actions1 ) {
-                    for ( size_t h = 0; h < 5; ++h ) {
+                    for ( size_t h = 0; h < HeadCount; ++h ) {
                         ( *NNAI::g_actions1 )[h].push_back( head_actions[h].to( NNAI::device ) );
                     }
                 }
@@ -186,7 +186,7 @@ namespace NNAI
                 if ( NNAI::g_states2 )
                     NNAI::g_states2->push_back( squeezed_input.to( NNAI::device ) );
                 if ( NNAI::g_actions2 ) {
-                    for ( size_t h = 0; h < 5; ++h ) {
+                    for ( size_t h = 0; h < HeadCount; ++h ) {
                         ( *NNAI::g_actions2 )[h].push_back( head_actions[h].to( NNAI::device ) );
                     }
                 }
@@ -483,19 +483,19 @@ namespace NNAI
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).view( { -1 } );
 
         std::vector<torch::Tensor> action_batches;
-        for ( int h = 0; h < 5; ++h )
+        for ( int h = 0; h < HeadCount; ++h )
             action_batches.push_back( torch::stack( actions[h] ).to( device ) );
 
         int64_t T = std::min( { state_batch.size( 0 ), reward_batch.size( 0 ), action_batches[0].size( 0 ) } );
         state_batch = state_batch.slice( 0, 0, T );
         reward_batch = reward_batch.slice( 0, 0, T );
-        for ( int h = 0; h < 5; ++h )
+        for ( int h = 0; h < HeadCount; ++h )
             action_batches[h] = action_batches[h].slice( 0, 0, T );
 
         optimizer.zero_grad();
         auto logits = model->forward( state_batch );
 
-        if ( logits.size() != 5 || action_batches.size() != 5 ) {
+        if ( logits.size() != HeadCount || action_batches.size() != HeadCount ) {
             std::cerr << "Warning: Invalid logits or action batches for model" << model_id << "\n";
             return;
         }
@@ -514,7 +514,7 @@ namespace NNAI
         torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
         const float entropy_coef = 0.01f;
 
-        for ( int h = 0; h < 5; ++h ) {
+        for ( int h = 0; h < HeadCount; ++h ) {
             auto log_prob = torch::nn::functional::log_softmax( logits[h], 1 );
             auto prob = torch::exp( log_prob );
             auto entropy = -( prob * log_prob ).sum( 1 ).mean();
