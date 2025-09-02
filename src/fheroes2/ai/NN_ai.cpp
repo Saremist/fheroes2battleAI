@@ -489,12 +489,13 @@ namespace NNAI
                         float & epoch_total_reward, torch::Device device, int model_id )
     {
         if ( states.empty() || rewards.empty() || actions.empty() ) {
-            std::cout << "states: " << states.size() << " rewards: " << rewards.size() << " actions: " << actions.size() << "actions [0] " << actions[0].size() << "\n";
+            std::cout << "states: " << states.size() << " rewards: " << rewards.size() << " actions: " << actions.size()
+                      << " actions[0]: " << ( actions.empty() ? 0 : actions[0].size() ) << "\n";
             std::cout << "Empty states, rewards, or actions. Skipping training for model " << model_id << "\n";
             return;
         }
 
-        // Stack to batches
+        // === Stack states, actions, rewards into tensors ===
         torch::Tensor state_batch = torch::stack( states ).to( device );
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).to( torch::kFloat ).view( { -1 } );
 
@@ -506,54 +507,57 @@ namespace NNAI
             action_batches.push_back( ab );
         }
 
-        //// Trim to common T across state/reward and ALL action heads
-        // int64_t T = state_batch.size( 0 );
-        // T = std::min<int64_t>( T, reward_batch.size( 0 ) );
-        // for ( size_t h = 0; h < action_batches.size(); ++h )
-        //     T = std::min<int64_t>( T, action_batches[h].size( 0 ) );
-        // state_batch = state_batch.slice( 0, 0, T );
-        // reward_batch = reward_batch.slice( 0, 0, T );
-        // for ( size_t h = 0; h < action_batches.size(); ++h )
-        //     action_batches[h] = action_batches[h].slice( 0, 0, T );
-
         optimizer.zero_grad();
 
-        // Forward
+        // === Forward pass ===
         auto logits = model->forward( state_batch ); // vector< Tensor >, one per head
 
-        // Normalize rewards (safe)
-        auto reward_mean = reward_batch.mean().detach();
-        auto reward_std = reward_batch.std( /*unbiased=*/false ).detach();
-        torch::Tensor norm_rewards
-            = ( reward_batch.size( 0 ) <= 1 || reward_std.item<float>() < 1e-6f ) ? reward_batch : ( reward_batch - reward_mean ) / torch::clamp( reward_std, 1e-6 );
+        // === Compute discounted returns ===
+        const float gamma = 0.99f;
+        std::vector<float> discounted( reward_batch.size( 0 ) );
+        float running_return = 0.0f;
+        for ( int64_t t = reward_batch.size( 0 ) - 1; t >= 0; --t ) {
+            running_return = reward_batch[t].item<float>() + gamma * running_return;
+            discounted[t] = running_return;
+        }
+        auto returns = torch::tensor( discounted, reward_batch.options() );
 
-        // Loss
+        // === Scale by known maximum reward (1100) ===
+        const float max_reward = 1100.0f;
+        returns = returns / max_reward; // keeps values in ~[0,1]
+
+        // === Normalize returns (zero mean, unit std) ===
+        auto mean = returns.mean().detach();
+        auto std = returns.std( /*unbiased=*/false ).detach();
+        auto norm_rewards = ( returns - mean ) / ( std + 1e-6f );
+
+        // === Loss computation ===
         torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
-        const float entropy_coef = 0.01f;
+        const float entropy_coef = 0.05f; // stronger entropy
 
         for ( size_t h = 0; h < logits.size(); ++h ) {
             auto log_prob = torch::nn::functional::log_softmax( logits[h], /*dim=*/1 );
-            auto C = log_prob.size( 1 );
-
-            // Sanity-check action ranges before gather
-            auto a_min = action_batches[h].min().item<int64_t>();
-            auto a_max = action_batches[h].max().item<int64_t>();
-
             auto idx = action_batches[h].unsqueeze( 1 ); // [B,1]
-            auto selected_log_prob = log_prob.gather( 1, idx ).squeeze( 1 ); // [B]
+            auto selected_log_prob = log_prob
+                                         .gather( 1, idx ) // pick chosen actions
+                                         .squeeze( 1 ); // [B]
 
+            // Entropy regularization
             auto prob = torch::exp( log_prob );
             auto entropy = -( prob * log_prob ).sum( 1 ).mean();
 
+            // Policy gradient loss
             auto policy_loss = -( selected_log_prob * norm_rewards ).mean();
             loss += policy_loss - entropy_coef * entropy;
         }
+
+        // === Backprop ===
         loss.backward();
         optimizer.step();
 
         total_loss += loss.detach().cpu().item<double>();
 
-        // Accumulate rewards
+        // === Track total reward (undiscounted, for logging) ===
         float reward_sum = 0.0f;
         for ( const auto & r : rewards )
             reward_sum += r.cpu().item<float>();
