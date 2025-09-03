@@ -371,6 +371,10 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 int game_count = 0;
                 float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0;
 
+                std::vector<torch::Tensor> all_states1, all_states2;
+                std::vector<std::vector<torch::Tensor>> all_actions1( HeadCount ), all_actions2( HeadCount );
+                std::vector<torch::Tensor> all_rewards1, all_rewards2;
+
                 for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
                     std::vector<torch::Tensor> states1, states2;
                     std::vector<std::vector<torch::Tensor>> actions1( HeadCount ), actions2( HeadCount );
@@ -383,14 +387,29 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     NNAI::g_actions2 = actions2;
                     NNAI::g_rewards2 = rewards2;
 
+                    // play one game and fill g_states/actions/rewards
                     NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
-                    NNAI::tryTrainModel( model1, optimizer1, g_states1, g_actions1, g_rewards1, total_loss1, epoch_total_reward1, device, 1 );
-                    if ( !NNAI::isComparing ) {
-                        NNAI::tryTrainModel( model2, optimizer2, g_states2, g_actions2, g_rewards2, total_loss2, epoch_total_reward2, device, 2 );
-                    }
+                    // accumulate data into buffers
+                    all_states1.insert( all_states1.end(), g_states1.begin(), g_states1.end() );
+                    all_rewards1.insert( all_rewards1.end(), g_rewards1.begin(), g_rewards1.end() );
+                    for ( size_t h = 0; h < HeadCount; ++h )
+                        all_actions1[h].insert( all_actions1[h].end(), g_actions1[h].begin(), g_actions1[h].end() );
+
+                    all_states2.insert( all_states2.end(), g_states2.begin(), g_states2.end() );
+                    all_rewards2.insert( all_rewards2.end(), g_rewards2.begin(), g_rewards2.end() );
+                    for ( size_t h = 0; h < HeadCount; ++h )
+                        all_actions2[h].insert( all_actions2[h].end(), g_actions2[h].begin(), g_actions2[h].end() );
+
                     ++game_count;
                 }
+
+                // Now train once with all collected data
+                NNAI::tryTrainModel( model1, optimizer1, all_states1, all_actions1, all_rewards1, total_loss1, epoch_total_reward1, device, 1 );
+                if ( !NNAI::isComparing ) {
+                    NNAI::tryTrainModel( model2, optimizer2, all_states2, all_actions2, all_rewards2, total_loss2, epoch_total_reward2, device, 2 );
+                }
+
                 auto epoch_end = std::chrono::steady_clock::now();
                 std::chrono::duration<double> epoch_duration = epoch_end - epoch_start;
                 total_elapsed_seconds += epoch_duration.count();
@@ -588,7 +607,7 @@ int main( int argc, char ** argv )
         model1->to( NNAI::device ); // Ensure model is on device
         model2->to( NNAI::device );
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 40000, 0.0005, NNAI::device, /*games per epoch = */ 100 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 500 );
     }
 
     NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );
