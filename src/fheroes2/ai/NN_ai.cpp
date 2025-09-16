@@ -141,6 +141,12 @@ namespace NNAI
         // Prepare input: [1, 25, 11, 9]
         torch::Tensor input = prepareBattleCNNInput( arena, currentUnit ).to( NNAI::device );
 
+        // Store state for training
+        if ( NNAI::isTraining ) {
+            auto & g_states = ( currentUnit.GetColor() == 0x01 ) ? NNAI::g_states1 : NNAI::g_states2;
+            g_states.push_back( input.clone().detach() ); // store [1,25,11,9] tensor
+        }
+
         // Forward pass
         std::vector<torch::Tensor> nn_output = model->forward( input );
 
@@ -387,21 +393,7 @@ namespace NNAI
             return;
         }
 
-        // --- Flatten batch dimension if needed ---
-        std::vector<torch::Tensor> flat_states;
-        flat_states.reserve( states.size() );
-        for ( auto & s : states ) {
-            if ( s.dim() == 4 && s.size( 0 ) == 1 ) {
-                // Remove singleton batch dim → [C, H, W]
-                flat_states.push_back( s.squeeze( 0 ) );
-            }
-            else {
-                flat_states.push_back( s );
-            }
-        }
-
-        // Stack into proper 4D tensor: [batch, channels, H, W]
-        torch::Tensor state_batch = torch::stack( flat_states ).to( device ); // shape [N, 25, 11, 9]
+        torch::Tensor state_batch = torch::cat( states, 0 ).to( device ); // [batch=1,25,11,9] if single state
 
         // Stack rewards
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).to( torch::kFloat ).view( { -1 } );
