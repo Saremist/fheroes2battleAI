@@ -20,20 +20,21 @@
 namespace NNAI
 {
     class BattleLSTM;
+    class BattleCNN;
 
     const int INPUT_SIZE = 240; // Size of the input feature vector
     const int HIDDEN_SIZE = 128; // Size of the LSTM hidden state
     const int LAYER_NUM = 1; // Number of LSTM layers
 
-    extern std::shared_ptr<NNAI::BattleLSTM> g_model1;
-    extern std::shared_ptr<NNAI::BattleLSTM> g_model2;
+    extern std::shared_ptr<NNAI::BattleCNN> g_model1;
+    extern std::shared_ptr<NNAI::BattleCNN> g_model2;
     // Global model pointers for each color
-    extern std::shared_ptr<BattleLSTM> g_model_blue;
-    extern std::shared_ptr<BattleLSTM> g_model_green;
-    extern std::shared_ptr<BattleLSTM> g_model_red;
-    extern std::shared_ptr<BattleLSTM> g_model_yellow;
-    extern std::shared_ptr<BattleLSTM> g_model_orange;
-    extern std::shared_ptr<BattleLSTM> g_model_purple;
+    extern std::shared_ptr<BattleCNN> g_model_blue;
+    extern std::shared_ptr<BattleCNN> g_model_green;
+    extern std::shared_ptr<BattleCNN> g_model_red;
+    extern std::shared_ptr<BattleCNN> g_model_yellow;
+    extern std::shared_ptr<BattleCNN> g_model_orange;
+    extern std::shared_ptr<BattleCNN> g_model_purple;
 
     extern std::vector<torch::Tensor> g_states1;
     extern std::vector<std::vector<torch::Tensor>> g_actions1;
@@ -145,20 +146,97 @@ namespace NNAI
         }
     };
 
-    TORCH_MODULE( BattleLSTM );
+    // TORCH_MODULE( BattleLSTM );
+
+    struct BattleCNNImpl : torch::nn::Module
+    {
+        // CNN trunk
+        torch::nn::Sequential conv_trunk{ nullptr };
+
+        // Fully connected hidden after flatten
+        torch::nn::Linear fc{ nullptr };
+
+        // Output heads
+        torch::nn::Linear action_type_head{ nullptr }; // 4 types: SKIP, MOVE, ATTACK, SPELLCAST
+        torch::nn::Linear position_x_head{ nullptr }; // 9 tiles
+        torch::nn::Linear position_y_head{ nullptr }; // 11 tiles
+        torch::nn::Linear destination_x_head{ nullptr }; // 9 tiles
+        torch::nn::Linear destination_y_head{ nullptr }; // 11 tiles
+
+        BattleCNNImpl( int64_t input_channels = 25, int64_t hidden_size = 256 )
+            : conv_trunk( torch::nn::Sequential( torch::nn::Conv2d( torch::nn::Conv2dOptions( input_channels, 64, 3 ).padding( 1 ) ), torch::nn::ReLU(),
+                                                 torch::nn::Conv2d( torch::nn::Conv2dOptions( 64, 128, 3 ).padding( 1 ) ), torch::nn::ReLU(),
+                                                 torch::nn::Conv2d( torch::nn::Conv2dOptions( 128, 128, 3 ).padding( 1 ) ), torch::nn::ReLU(), torch::nn::Flatten() ) )
+            , fc( nullptr )
+            , action_type_head( nullptr )
+            , position_x_head( nullptr )
+            , position_y_head( nullptr )
+            , destination_x_head( nullptr )
+            , destination_y_head( nullptr )
+        {
+            register_module( "conv_trunk", conv_trunk );
+
+            // Calculate flattened conv output size
+            int conv_output_size = 128 * 11 * 9; // channels * H * W after conv (no pooling)
+            fc = register_module( "fc", torch::nn::Linear( conv_output_size, hidden_size ) );
+
+            // Output heads
+            action_type_head = register_module( "action_type_head", torch::nn::Linear( hidden_size, 4 ) );
+            position_x_head = register_module( "position_x_head", torch::nn::Linear( hidden_size, 9 ) );
+            position_y_head = register_module( "position_y_head", torch::nn::Linear( hidden_size, 11 ) );
+            destination_x_head = register_module( "destination_x_head", torch::nn::Linear( hidden_size, 9 ) );
+            destination_y_head = register_module( "destination_y_head", torch::nn::Linear( hidden_size, 11 ) );
+
+            // Init weights
+            for ( auto & module : this->modules( /*include_self=*/false ) ) {
+                if ( auto m = dynamic_cast<torch::nn::Conv2dImpl *>( module.get() ) ) {
+                    torch::nn::init::xavier_uniform_( m->weight );
+                    torch::nn::init::constant_( m->bias, 0 );
+                }
+            }
+            torch::nn::init::xavier_uniform_( fc->weight );
+            torch::nn::init::constant_( fc->bias, 0 );
+            torch::nn::init::xavier_uniform_( action_type_head->weight );
+            torch::nn::init::constant_( action_type_head->bias, 0 );
+            torch::nn::init::xavier_uniform_( position_x_head->weight );
+            torch::nn::init::constant_( position_x_head->bias, 0 );
+            torch::nn::init::xavier_uniform_( position_y_head->weight );
+            torch::nn::init::constant_( position_y_head->bias, 0 );
+            torch::nn::init::xavier_uniform_( destination_x_head->weight );
+            torch::nn::init::constant_( destination_x_head->bias, 0 );
+            torch::nn::init::xavier_uniform_( destination_y_head->weight );
+            torch::nn::init::constant_( destination_y_head->bias, 0 );
+        }
+
+        std::vector<torch::Tensor> forward( torch::Tensor x )
+        {
+            auto h = conv_trunk->forward( x );
+            h = fc->forward( h );
+
+            auto action_type_logits = action_type_head->forward( h );
+            auto position_x_logits = position_x_head->forward( h );
+            auto position_y_logits = position_y_head->forward( h );
+            auto destination_x_logits = destination_x_head->forward( h );
+            auto destination_y_logits = destination_y_head->forward( h );
+
+            return { action_type_logits, position_x_logits, position_y_logits, destination_x_logits, destination_y_logits };
+        }
+    };
+
+    TORCH_MODULE( BattleCNN );
 
     // Model management
     void initializeGlobalModels();
     void createAndSaveModel( const std::string & model_path );
-    std::shared_ptr<BattleLSTM> getModelByColor( int color );
-    void saveModel( const BattleLSTM & model, const std::string & model_path );
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path );
+    std::shared_ptr<BattleCNN> getModelByColor( int color );
+    void saveModel( const BattleCNN & model, const std::string & model_path );
+    void loadModel( std::shared_ptr<BattleCNN> & modelPtr, const std::string & model_path );
     // torch::Tensor preprocessInput( const std::vector<float> & raw_data );
-    torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
+    torch::Tensor prepareBattleCNNInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
     // Returns two random models and their names.
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels();
+    std::tuple<BattleCNN &, std::string, BattleCNN &, std::string, BattleCNN &, std::string> SelectRandomModels();
 
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
@@ -166,7 +244,7 @@ namespace NNAI
 
     bool isNNControlled( int color ); // TODO MW
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+    void tryTrainModel( BattleCNN & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id );
     void resetGameRewardStats( Battle::Arena & arena );

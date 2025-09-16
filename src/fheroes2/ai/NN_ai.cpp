@@ -1,4 +1,4 @@
-#include "NN_ai.h"
+﻿#include "NN_ai.h"
 
 #pragma warning( disable : 4996 )
 
@@ -22,12 +22,12 @@
 
 namespace NNAI
 {
-    std::shared_ptr<BattleLSTM> g_model1 = nullptr;
-    std::shared_ptr<BattleLSTM> g_model2 = nullptr;
+    std::shared_ptr<BattleCNN> g_model1 = nullptr;
+    std::shared_ptr<BattleCNN> g_model2 = nullptr;
     // Global model pointers for each color
-    std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_green = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_red = nullptr;
+    std::shared_ptr<BattleCNN> g_model_blue = nullptr;
+    std::shared_ptr<BattleCNN> g_model_green = nullptr;
+    std::shared_ptr<BattleCNN> g_model_red = nullptr;
 
     std::vector<torch::Tensor> g_states1;
     std::vector<std::vector<torch::Tensor>> g_actions1( HeadCount );
@@ -61,7 +61,8 @@ namespace NNAI
         int64_t input_size = INPUT_SIZE, hidden_size = HIDDEN_SIZE, num_layers = LAYER_NUM;
 
         try {
-            BattleLSTM model( input_size, hidden_size, num_layers );
+            BattleCNN model;
+            // BattleLSTM model( input_size, hidden_size, num_layers );
             torch::save( model, model_path );
         }
         catch ( const std::exception & e ) {
@@ -69,7 +70,7 @@ namespace NNAI
         }
     }
 
-    void saveModel( const BattleLSTM & model, const std::string & model_path )
+    void saveModel( const BattleCNN & model, const std::string & model_path )
     {
         try {
             torch::save( model, model_path );
@@ -80,7 +81,7 @@ namespace NNAI
         }
     }
 
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path )
+    void loadModel( std::shared_ptr<BattleCNN> & modelPtr, const std::string & model_path )
     {
         namespace fs = std::filesystem;
         try {
@@ -88,7 +89,7 @@ namespace NNAI
                 std::cerr << "Model file does not exist at " << model_path << ". Creating new model..." << std::endl;
                 createAndSaveModel( model_path );
             }
-            modelPtr = std::make_shared<BattleLSTM>();
+            modelPtr = std::make_shared<BattleCNN>();
             torch::load( *modelPtr, model_path );
             modelPtr->get()->to( device ); // Move model to device after loading
             std::cout << "Model loaded from " << model_path << std::endl;
@@ -99,7 +100,7 @@ namespace NNAI
         }
     }
 
-    std::shared_ptr<BattleLSTM> getModelByColor( int color )
+    std::shared_ptr<BattleCNN> getModelByColor( int color )
     {
         switch ( color ) {
         case 0x01: // BLUE
@@ -127,186 +128,111 @@ namespace NNAI
 
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        if ( currentUnit.Modes( Battle::TR_MOVED ) ) {
+        if ( currentUnit.Modes( Battle::TR_MOVED ) || currentUnit.GetCount() == 0 ) {
             return {};
         }
 
-        BattleLSTM & model = *getModelByColor( currentUnit.GetColor() );
-
+        BattleCNN & model = *getModelByColor( currentUnit.GetColor() );
         if ( !model ) {
             std::cerr << "Error: Neural network model is not initialized!" << std::endl;
             return {};
         }
 
-        torch::Tensor input = prepareBattleLSTMInput( arena, currentUnit );
-        if ( currentUnit.GetCount() == 0 ) {
-            return {};
-        }
+        // Prepare input: [1, 25, 11, 9]
+        torch::Tensor input = prepareBattleCNNInput( arena, currentUnit ).to( NNAI::device );
 
-        const uint8_t color = static_cast<uint8_t>( currentUnit.GetColor() );
+        // Forward pass
+        std::vector<torch::Tensor> nn_output = model->forward( input );
 
-        torch::Tensor squeezed_input = input.squeeze( 0 );
-
-        std::vector<torch::Tensor> nn_output;
-
-        if ( color == 0x01 ) { // BLUE team
-            NNAI::g_states1.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states1.size() > 10 ? NNAI::g_states1.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states1.begin() + start_idx, NNAI::g_states1.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
-        }
-
-        else if ( color == 0x04 ) { // RED team
-            NNAI::g_states2.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states2.size() > 10 ? NNAI::g_states2.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states2.begin() + start_idx, NNAI::g_states2.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
-        }
-        else {
-            std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
-        }
-
-        std::vector<int64_t> nn_outputs;
-        for ( const auto & head_output : nn_output ) {
-            auto probs = torch::nn::functional::softmax( head_output, /*dim=*/1 );
-            probs = probs.nan_to_num( 0.0, 0.0, 0.0 );
+        // Sample actions from each head
+        std::vector<int64_t> nn_actions;
+        for ( auto & head_output : nn_output ) {
+            auto probs = torch::nn::functional::softmax( head_output, 1 ).nan_to_num( 0.0, 0.0, 0.0 );
 
             if ( !probs.isfinite().all().item<bool>() || probs.min().item<float>() < 0 ) {
-                std::cerr << "Invalid probabilities detected, SKIPPING." << std::endl;
+                std::cerr << "Invalid probabilities detected, skipping unit." << std::endl;
                 return {};
             }
 
-            auto sampled = probs.multinomial( /*num_samples=*/1 );
-            nn_outputs.push_back( sampled.item<int64_t>() );
+            auto sampled = probs.multinomial( 1 );
+            nn_actions.push_back( sampled.item<int64_t>() );
         }
 
+        // Store actions if training
         if ( NNAI::isTraining ) {
             std::vector<torch::Tensor> head_actions;
-            for ( int64_t val : nn_outputs ) {
+            for ( auto val : nn_actions ) {
                 head_actions.push_back( torch::tensor( val, torch::TensorOptions().dtype( torch::kLong ).device( NNAI::device ) ) );
             }
 
+            auto & g_actions = ( currentUnit.GetColor() == 0x01 ) ? NNAI::g_actions1 : NNAI::g_actions2;
             if ( head_actions.size() != HeadCount ) {
-                std::cerr << "Warning: Expected " << HeadCount << " heads, got " << head_actions.size() << std::endl;
-                return {};
-            }
-
-            if ( color == 0x01 ) { // BLUE team
-                for ( size_t h = 0; h < HeadCount; ++h ) {
-                    NNAI::g_actions1[h].push_back( head_actions[h].clone().detach().contiguous().to( NNAI::device ).to( torch::kLong ) );
-                }
-            }
-            else if ( color == 0x04 ) { // RED team
-                for ( size_t h = 0; h < HeadCount; ++h ) {
-                    NNAI::g_actions2[h].push_back( head_actions[h].clone().detach().contiguous().to( NNAI::device ).to( torch::kLong ) );
-                }
+                std::cerr << "Warning: head count mismatch" << std::endl;
             }
             else {
-                std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
+                for ( size_t h = 0; h < HeadCount; ++h ) {
+                    g_actions[h].push_back( head_actions[h].clone().detach() );
+                }
             }
         }
 
-        Battle::Actions actions;
+        // Map neural outputs to game actions
+        int actionType = static_cast<int>( nn_actions[0] );
+        int moveX = static_cast<int>( nn_actions[1] );
+        int moveY = static_cast<int>( nn_actions[2] );
+        int attackX = static_cast<int>( nn_actions[3] );
+        int attackY = static_cast<int>( nn_actions[4] );
 
-        int actionType = static_cast<int>( nn_outputs[0] );
-        int positionNumX = static_cast<int>( nn_outputs[1] );
-        int positionNumY = static_cast<int>( nn_outputs[2] );
-        // int directionOutput = static_cast<int>( nn_outputs[3] );
+        int movePos = getIndexFromXY( moveX, moveY );
+        int attackPos = getIndexFromXY( attackX, attackY );
+        int attackDir = Battle::Board::GetDirection( movePos, attackPos );
 
-        int attackTargetPositionX = static_cast<int>( nn_outputs[3] );
-        int attackTargetPositionY = static_cast<int>( nn_outputs[4] );
+        int currentUID = static_cast<int>( currentUnit.GetUID() );
 
-        // Use the coordinates to get the board index
-        int positionNum = getIndexFromXY( positionNumX, positionNumY );
-
-        int attackTargetPosition = getIndexFromXY( attackTargetPositionX, attackTargetPositionY );
-        int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
-
-        // int attackDirection = ( directionOutput >= 6 ? -1 : 1 << directionOutput );
-        // int attackTargetPositon = Battle::Board::GetIndexDirection( positionNum, attackDirection );
-
-        int currentUnitUID = static_cast<int>( currentUnit.GetUID() );
-
-        // Check if the chosen move position is the same as the current position.
-        // If so, and the action is MOVE, it's essentially a SKIP.
-        if ( actionType == 0 && positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Selected MOVE to the current position. Changing to SKIP." << std::endl;
-            actionType = 3;
+        // Adjust action type if necessary
+        if ( actionType == 0 && movePos == currentUnit.GetPosition().GetHead()->GetIndex() ) {
+            actionType = 3; // SKIP
         }
-
-        // Process SPELLCAST as ATTACK
         if ( actionType == 2 ) {
-            actionType = 1;
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Spellcasting is not implemented, treating as ATTACK." << std::endl;
+            actionType = 1; // Treat SPELLCAST as ATTACK
         }
 
-        int targetUnitUID = -1;
-        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPosition );
-        if ( targetCell ) {
-            const auto * unit = targetCell->GetUnit();
-            if ( unit ) {
-                targetUnitUID = unit->GetUID();
-            }
+        // Determine target UID
+        int targetUID = -1;
+        const auto * targetCell = arena.GetBoard()->GetCell( attackPos );
+        if ( targetCell && targetCell->GetUnit() ) {
+            targetUID = targetCell->GetUnit()->GetUID();
         }
 
-        // Handle archery attacks
+        // Handle archery attack
         if ( currentUnit.GetShots() > 0 ) {
-            attackDirection = -1; // -1 indicates archery attack
-            positionNum = -1; // No move needed for archery attack
+            attackDir = -1;
+            movePos = -1;
         }
 
-        // If unit wants to attack a non-existent unit, check if it's a valid move.
-        if ( actionType == 1 && targetUnitUID == -1 ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Attempting to ATTACK a non-existent unit. Changing to MOVE." << std::endl;
-            actionType = 0;
-        }
-
-        // Final validation of actions
+        // Validate ATTACK
         if ( actionType == 1
-             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPosition, attackDirection ) ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Illegal ATTACK action. Changing to MOVE." << std::endl;
-            actionType = 0;
+             && ( targetUID == -1 || !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, movePos, attackPos, attackDir ) ) ) {
+            actionType = 0; // fallback to MOVE
         }
 
-        if ( actionType == 0 && !CheckMoveParameters( &currentUnit, positionNum ) ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Illegal MOVE action. Defaulting to SKIP." << std::endl;
-            actionType = 3;
+        // Validate MOVE
+        if ( actionType == 0 && !CheckMoveParameters( &currentUnit, movePos ) ) {
+            actionType = 3; // fallback to SKIP
         }
 
-        if ( !NNAI::skipDebugLog ) {
-            std::cout << "\nFinal Action Selection:" << std::endl;
-            std::cout << "Action Type: " << actionType << ", Move Position Index: " << positionNum << ", Attack Direction: " << attackDirection
-                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPosition
-                      << std::endl;
-        }
-
+        // Build final actions
+        Battle::Actions actions;
         switch ( actionType ) {
-        case 0:
-            actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
+        case 0: // MOVE
+            actions.emplace_back( Battle::Command::MOVE, currentUID, movePos );
             break;
-        case 1:
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
+        case 1: // ATTACK
+            actions.emplace_back( Battle::Command::ATTACK, currentUID, targetUID, movePos, attackPos, attackDir );
             break;
-        case 3:
+        case 3: // SKIP
         default:
-            actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
+            actions.emplace_back( Battle::Command::SKIP, currentUID );
             break;
         }
 
@@ -317,11 +243,14 @@ namespace NNAI
     std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
         std::vector<float> features;
+        // flag for emptiness (0.0 since this is a real unit)
+        features.push_back( 0.0f );
+
         std::pair<int, int> coords = getXYCoordinates( unit );
 
         features.push_back( static_cast<float>( unit.GetUID() ) ); // Unique ID
-        features.push_back( normalize( static_cast<float>( coords.first ), 0, 9 ) ); // Position X (normalized by battlefield size)
-        features.push_back( normalize( static_cast<float>( coords.second ), 0, 11 ) ); // Position Y (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( coords.first ), 0, 8 ) ); // Position X (normalized by battlefield size)
+        features.push_back( normalize( static_cast<float>( coords.second ), 0, 10 ) ); // Position Y (normalized by battlefield size)
         features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) ); // Normalize Count
         features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) ); // Normalize HP
         features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) ); // Normalize speed
@@ -351,71 +280,36 @@ namespace NNAI
         return features;
     }
 
-    torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
+    torch::Tensor prepareBattleCNNInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        // Get all units for both sides
-        const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-        const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+        const int H = 11; // height (Y: 0..10)
+        const int W = 9; // width  (X: 0..8)
+        const int featureSize = 25; // now includes is_empty
 
-        // Prepare feature vectors
-        std::vector<std::vector<float>> featuresList;
+        torch::Tensor input = torch::zeros( { featureSize, H, W }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
 
-        // 1. Current unit (always first)
-        featuresList.push_back( extractUnitFeatures( currentUnit, arena, currentUnit ) );
+        for ( int y = 0; y < H; ++y ) {
+            for ( int x = 0; x < W; ++x ) {
+                const Battle::Cell * cell = arena.GetBoard()->GetCell( getIndexFromXY( x, y ) );
 
-        // 2. Up to 4 other allies (excluding current unit)
-        int allyCount = 0;
-        for ( const Battle::Unit * unit : allies ) {
-            if ( unit && unit->isValid() && unit != &currentUnit ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
-                ++allyCount;
-                if ( allyCount == 4 )
-                    break;
-            }
-        }
-        // Pad with zeros if less than 4 allies
-        if ( !featuresList.empty() ) {
-            const int featureSize = static_cast<int>( featuresList[0].size() );
-            while ( allyCount < 4 ) {
-                featuresList.push_back( std::vector<float>( featureSize, 0.0f ) );
-                ++allyCount;
+                if ( const Battle::Unit * unit = cell->GetUnit() ) {
+                    if ( unit->isValid() ) {
+                        std::vector<float> feats = extractUnitFeatures( *unit, arena, currentUnit );
+                        for ( int c = 0; c < featureSize; ++c ) {
+                            input[c][y][x] = feats[c];
+                        }
+                    }
+                }
+                else {
+                    // Empty tile → mark only is_empty = 1.0f
+                    input[0][y][x] = 1.0f;
+                }
             }
         }
 
-        // 3. Up to 5 enemies
-        int enemyCount = 0;
-        for ( const Battle::Unit * unit : enemies ) {
-            if ( unit && unit->isValid() ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
-                ++enemyCount;
-                if ( enemyCount == 5 )
-                    break;
-            }
-        }
-        // Pad with zeros if less than 5 enemies
-        if ( !featuresList.empty() ) {
-            const int featureSize = static_cast<int>( featuresList[0].size() );
-            while ( enemyCount < 5 ) {
-                featuresList.push_back( std::vector<float>( featureSize, 0.0f ) );
-                ++enemyCount;
-            }
-        }
+        input = input.unsqueeze( 0 ); // [1, 25, 11, 9]
+        // [25, 11, 9]
 
-        // Convert to torch tensor: [1, seq_len, input_size]
-        if ( featuresList.empty() )
-            return torch::empty( { 1, 0, 0 }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
-
-        const int seq_len = static_cast<int>( featuresList.size() );
-        const int input_size = static_cast<int>( featuresList[0].size() );
-
-        torch::Tensor input = torch::zeros( { 1, seq_len, input_size }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
-        for ( int i = 0; i < seq_len; ++i ) {
-            for ( int j = 0; j < input_size; ++j ) {
-                input[0][i][j] = featuresList[i][j];
-            }
-        }
-
-        input = input.view( { 1, 1, seq_len * input_size } );
         return input;
     }
 
@@ -452,12 +346,10 @@ namespace NNAI
             }
         }
     }
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
+    std::tuple<BattleCNN &, std::string, BattleCNN &, std::string, BattleCNN &, std::string> SelectRandomModels()
     {
         // Pair each model pointer with its name
-        std::vector<std::pair<std::shared_ptr<BattleLSTM>, std::string>> models
-            = { { g_model_blue, "blue" },     { g_model_green, "green" },   { g_model_red, "red" }/*,
-                { g_model_yellow, "yellow" }, { g_model_orange, "orange" }, { g_model_purple, "purple" }*/ };
+        std::vector<std::pair<std::shared_ptr<BattleCNN>, std::string>> models = { { g_model_blue, "blue" }, { g_model_green, "green" }, { g_model_red, "red" } };
 
         // Remove nullptrs
         models.erase( std::remove_if( models.begin(), models.end(), []( const auto & m ) { return !m.first; } ), models.end() );
@@ -484,7 +376,7 @@ namespace NNAI
         return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second, *models[idx3].first, models[idx3].second );
     }
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+    void tryTrainModel( BattleCNN & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id )
     {
@@ -495,10 +387,26 @@ namespace NNAI
             return;
         }
 
-        // === Stack states, actions, rewards into tensors ===
-        torch::Tensor state_batch = torch::stack( states ).to( device );
+        // --- Flatten batch dimension if needed ---
+        std::vector<torch::Tensor> flat_states;
+        flat_states.reserve( states.size() );
+        for ( auto & s : states ) {
+            if ( s.dim() == 4 && s.size( 0 ) == 1 ) {
+                // Remove singleton batch dim → [C, H, W]
+                flat_states.push_back( s.squeeze( 0 ) );
+            }
+            else {
+                flat_states.push_back( s );
+            }
+        }
+
+        // Stack into proper 4D tensor: [batch, channels, H, W]
+        torch::Tensor state_batch = torch::stack( flat_states ).to( device ); // shape [N, 25, 11, 9]
+
+        // Stack rewards
         torch::Tensor reward_batch = torch::stack( rewards ).to( device ).to( torch::kFloat ).view( { -1 } );
 
+        // Stack action tensors
         std::vector<torch::Tensor> action_batches;
         action_batches.reserve( actions.size() );
         for ( size_t h = 0; h < actions.size(); ++h ) {
@@ -509,10 +417,10 @@ namespace NNAI
 
         optimizer.zero_grad();
 
-        // === Forward pass ===
-        auto logits = model->forward( state_batch ); // vector< Tensor >, one per head
+        // --- Forward pass ---
+        auto logits = model->forward( state_batch );
 
-        // === Compute discounted returns ===
+        // --- Compute discounted returns ---
         const float gamma = 0.99f;
         std::vector<float> discounted( reward_batch.size( 0 ) );
         float running_return = 0.0f;
@@ -522,42 +430,37 @@ namespace NNAI
         }
         auto returns = torch::tensor( discounted, reward_batch.options() );
 
-        // === Scale by known maximum reward (1100) ===
+        // Scale and normalize
         const float max_reward = 1100.0f;
-        returns = returns / max_reward; // keeps values in ~[0,1]
-
-        // === Normalize returns (zero mean, unit std) ===
+        returns = returns / max_reward;
         auto mean = returns.mean().detach();
-        auto std = returns.std( /*unbiased=*/false ).detach();
+        auto std = returns.std( false ).detach();
         auto norm_rewards = ( returns - mean ) / ( std + 1e-6f );
 
-        // === Loss computation ===
+        // --- Loss computation ---
         torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
-        const float entropy_coef = 0.05f; // stronger entropy
+        const float entropy_coef = 0.05f;
 
         for ( size_t h = 0; h < logits.size(); ++h ) {
-            auto log_prob = torch::nn::functional::log_softmax( logits[h], /*dim=*/1 );
+            auto log_prob = torch::nn::functional::log_softmax( logits[h], 1 );
             auto idx = action_batches[h].unsqueeze( 1 ); // [B,1]
-            auto selected_log_prob = log_prob
-                                         .gather( 1, idx ) // pick chosen actions
-                                         .squeeze( 1 ); // [B]
+            auto selected_log_prob = log_prob.gather( 1, idx ).squeeze( 1 ); // [B]
 
             // Entropy regularization
             auto prob = torch::exp( log_prob );
             auto entropy = -( prob * log_prob ).sum( 1 ).mean();
 
-            // Policy gradient loss
             auto policy_loss = -( selected_log_prob * norm_rewards ).mean();
             loss += policy_loss - entropy_coef * entropy;
         }
 
-        // === Backprop ===
+        // --- Backprop ---
         loss.backward();
         optimizer.step();
 
         total_loss += loss.detach().cpu().item<double>();
 
-        // === Track total reward (undiscounted, for logging) ===
+        // Track total reward
         float reward_sum = 0.0f;
         for ( const auto & r : rewards )
             reward_sum += r.cpu().item<float>();
@@ -696,7 +599,7 @@ namespace Battle
 
         // Win condition
         if ( currEnemyHP == 0 ) {
-            reward += 1000;
+            reward += 100;
             if ( !NNAI::skipDebugLog )
                 std::cout << "[DEBUG] Win detected: Enemy defeated." << std::endl;
             if ( color == currArena.GetArmy1Color() ) {
