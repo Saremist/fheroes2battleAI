@@ -246,11 +246,13 @@ namespace NNAI
     }
 
     // Extract features for a single unit
-    std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
+    std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         std::vector<float> features;
         // flag for emptiness (0.0 since this is a real unit)
         features.push_back( 0.0f );
+        features.push_back( arena.GetBoard()->GetDistance( currentUnit.GetPosition(), unit.GetPosition() ) );
+        features.push_back( ( arena.GetBoard()->GetDistance( currentUnit.GetPosition(), unit.GetPosition() ) > currentUnit.GetSpeed() ? 1.0f : 0.0f ) );
 
         std::pair<int, int> coords = getXYCoordinates( unit );
 
@@ -260,7 +262,7 @@ namespace NNAI
         features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) ); // Normalize Count
         features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) ); // Normalize HP
         features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) ); // Normalize speed
-        features.push_back( normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ), 0,
+        features.push_back( normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentUnit.GetPosition(), unit.GetPosition() ) ), 0,
                                        50 ) ); // Distance to current unit
         features.push_back( normalize( static_cast<float>( unit.GetAttack() ), 0, 100 ) ); // Normalize attack
         features.push_back( normalize( static_cast<float>( unit.GetDefense() ), 0, 100 ) ); // Normalize defense
@@ -275,11 +277,11 @@ namespace NNAI
         features.push_back( normalize( static_cast<float>( unit.GetLuck() ), 0, 100 ) ); // Luck
         features.push_back( static_cast<float>( unit.GetColor() ) ); // Ally or enemy color
 
-        currentunit.GetColor() == unit.GetColor() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Is current unit ally or foe
+        currentUnit.GetColor() == unit.GetColor() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Is current unit ally or foe
         unit.GetColor() == arena.GetArmy1Color() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Left or right
         unit.Modes( Battle::TR_MOVED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Moved this turn
         unit.Modes( Battle::TR_RESPONDED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Responded this turn
-        arena.GetBoard()->CanAttackTargetFromPosition( currentunit, unit, arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) )
+        arena.GetBoard()->CanAttackTargetFromPosition( currentUnit, unit, arena.GetBoard()->GetDistance( currentUnit.GetPosition(), unit.GetPosition() ) )
             ? features.push_back( 1.0f )
             : features.push_back( 0.0f ); // Can attack target from position
 
@@ -290,18 +292,17 @@ namespace NNAI
     {
         const int H = 11; // height (Y: 0..10)
         const int W = 9; // width  (X: 0..8)
-        const int featureSize = 25; // now includes is_empty
+        const int featureSize = NNAI::FEATURE_SIZE; // now includes is_empty and distance and in reach
 
         torch::Tensor input = torch::zeros( { featureSize, H, W }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
 
         for ( int y = 0; y < H; ++y ) {
             for ( int x = 0; x < W; ++x ) {
                 const Battle::Cell * cell = arena.GetBoard()->GetCell( getIndexFromXY( x, y ) );
-
                 if ( const Battle::Unit * unit = cell->GetUnit() ) {
                     if ( unit->isValid() ) {
                         std::vector<float> feats = extractUnitFeatures( *unit, arena, currentUnit );
-                        for ( int c = 0; c < featureSize; ++c ) {
+                        for ( int c = 2; c < featureSize; ++c ) {
                             input[c][y][x] = feats[c];
                         }
                     }
@@ -309,6 +310,9 @@ namespace NNAI
                 else {
                     // Empty tile → mark only is_empty = 1.0f
                     input[0][y][x] = 1.0f;
+                    // Distance extraction
+                    input[1][y][x] = arena.GetBoard()->GetDistance( currentUnit.GetPosition(), getIndexFromXY( x, y ) );
+                    input[2][y][x] = ( arena.GetBoard()->GetDistance( currentUnit.GetPosition(), getIndexFromXY( x, y ) ) > currentUnit.GetSpeed() ? 1.0f : 0.0f );
                 }
             }
         }

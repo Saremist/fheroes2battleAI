@@ -25,6 +25,7 @@ namespace NNAI
     const int INPUT_SIZE = 240; // Size of the input feature vector
     const int HIDDEN_SIZE = 128; // Size of the LSTM hidden state
     const int LAYER_NUM = 1; // Number of LSTM layers
+    const int FEATURE_SIZE = 27; // Size of the feature vector per cell
 
     extern std::shared_ptr<NNAI::BattleCNN> g_model1;
     extern std::shared_ptr<NNAI::BattleCNN> g_model2;
@@ -163,7 +164,7 @@ namespace NNAI
         torch::nn::Linear destination_x_head{ nullptr }; // 9 tiles
         torch::nn::Linear destination_y_head{ nullptr }; // 11 tiles
 
-        BattleCNNImpl( int64_t input_channels = 25, int64_t hidden_size = 256 )
+        BattleCNNImpl( int64_t input_channels = FEATURE_SIZE, int64_t hidden_size = 256 )
             : conv_trunk( torch::nn::Sequential( torch::nn::Conv2d( torch::nn::Conv2dOptions( input_channels, 64, 3 ).padding( 1 ) ), torch::nn::ReLU(),
                                                  torch::nn::Conv2d( torch::nn::Conv2dOptions( 64, 128, 3 ).padding( 1 ) ), torch::nn::ReLU(),
                                                  torch::nn::Conv2d( torch::nn::Conv2dOptions( 128, 128, 3 ).padding( 1 ) ), torch::nn::ReLU(), torch::nn::Flatten() ) )
