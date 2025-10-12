@@ -144,6 +144,8 @@ int getRandomMonterId()
     return randomMonsterId;
 }
 
+#include "NN_ai.h"
+
 void FillRandomTrainingTroops( Heroes * hero )
 {
     if ( !hero )
