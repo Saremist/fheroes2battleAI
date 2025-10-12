@@ -155,6 +155,12 @@ void FillRandomTrainingTroops( Heroes * hero )
     std::discrete_distribution<> dist( { 3, 6, 3, 1 } ); // Centered around 3
     int numTroops = dist( gen ) + 2; // Gives 2 to 5, centered on 3
 
+    // TODO MW return to random
+
+    if ( NNAI ::isTraining ) {
+        numTroops = 1; // Fixed number of troops for training
+    }
+
     for ( int i = 0; i < 5; ++i ) {
         auto troop = army.GetTroop( i );
         if ( !troop )
@@ -279,13 +285,12 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_START_GOOD, 0 ), display, buttonStart.area().getPosition(), { -5, 5 } );
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_EXIT_GOOD, 0 ), display, buttonExit.area().getPosition(), { -5, 5 } );
 
-
     buttonStart.draw();
     buttonExit.draw();
     buttonReset.draw();
 
     display.render();
-    
+
     bool result = NNAI::isTraining;
 
     while ( !NNAI::isTraining && le.HandleEvents() ) { // will skip input and instantly start a game if training mode is enabled
@@ -343,7 +348,6 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
                     updateHero( first, cur_pt );
                 }
 
-                
                 redrawOpponents( cur_pt );
 
                 first.needRedraw = true;
