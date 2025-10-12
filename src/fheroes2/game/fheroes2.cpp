@@ -56,9 +56,7 @@
 #include <cassert>
 #endif
 
-#include <fstream>
-
-#include "NN_ai.h";
+#include "NN_ai.h"
 #include "agg.h"
 #include "agg_image.h"
 #include "audio_manager.h"
@@ -77,6 +75,7 @@
 #include "image_palette.h"
 #include "localevent.h"
 #include "logging.h"
+#include "neuroevolution.h";
 #include "render_processor.h"
 #include "screen.h"
 #include "settings.h"
@@ -304,7 +303,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
     try {
         const fheroes2::HardwareInitializer hardwareInitializer;
         Logging::InitLog();
-        COUT( GetCaption() )
+        COUT( GetCaption() );
 
         Settings & conf = Settings::Get();
         conf.SetProgramPath( argv[0] );
@@ -318,19 +317,17 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
         coreComponents.emplace( fheroes2::SystemInitializationComponent::GameController );
 #endif
         const fheroes2::CoreInitializer coreInitializer( coreComponents );
-        DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() )
+        DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() );
 
         const DisplayInitializer displayInitializer;
         const DataInitializer dataInitializer;
+
         ListFiles midiSoundFonts;
         midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
         midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
-#ifdef WITH_DEBUG
-        for ( const std::string & file : midiSoundFonts ) {
-            DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
-        }
-#endif
+
         const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
+
         fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
         fheroes2::Display::instance().changePalette( nullptr, true );
         Game::Init();
@@ -338,77 +335,71 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
         try {
             const CursorRestorer cursorRestorer( true, Cursor::POINTER );
-            double total_elapsed_seconds = 0.0;
 
-            std::stringstream log_buffer; // New: Buffer to hold log messages
+            // Initialize neuroevolution
+            size_t POP_SIZE = 20;
+            float MUTATION_SIGMA = 0.02f;
+            float ELITE_FRAC = 0.2f;
+            NNAI::Neuroevolution evolution( POP_SIZE, MUTATION_SIGMA, ELITE_FRAC );
+
+            double total_elapsed_seconds = 0.0;
+            std::stringstream log_buffer;
 
             for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
-                NNAI::m1WinCount = 0;
-                NNAI::m2WinCount = 0;
-                auto epoch_start = std::chrono::steady_clock::now(); // CHRONO
+                auto epoch_start = std::chrono::steady_clock::now();
 
-                auto selection = NNAI::SelectRandomModels();
-                BattleCNN & model1 = std::get<0>( selection );
-                std::string name1 = std::get<1>( selection );
-                BattleCNN & model2 = std::get<2>( selection );
-                std::string name2 = std::get<3>( selection );
-                BattleCNN & model3 = std::get<4>( selection );
-                std::string name3 = std::get<5>( selection );
+                // Evaluate all agents
+                evolution.evaluatePopulation( [&]( NNAI::BattleCNN & agent ) -> float {
+                    int num_opponents = 2; // Reduced for faster evaluation
 
-                if ( NNAI::isComparing ) {
-                    name2 = "Original AI";
-                }
+                    int games_per_opponent = 1; // Reduced for faster evaluation
+                    float total_score = 0.0f;
 
-                model1->train();
-                model2->train();
-                NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( model1 );
-                NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( model2 );
+                    // Sample opponents (return shared_ptrs or references)
+                    std::vector<std::shared_ptr<NNAI::BattleCNN>> opponents = evolution.sampleOpponents( agent, num_opponents );
 
-                torch::optim::Adam optimizer1( model1->parameters(), torch::optim::AdamOptions( learning_rate ) );
-                torch::optim::Adam optimizer2( model2->parameters(), torch::optim::AdamOptions( learning_rate ) );
+                    for ( size_t idx = 0; idx < opponents.size(); ++idx ) {
+                        NNAI::BattleCNN & opp = *opponents[idx]; // reference to opponent
 
-                float total_loss1 = 0.0, total_loss2 = 0.0;
-                int game_count = 0;
-                float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0;
+                        int agent_wins = 0;
+                        int opp_wins = 0;
 
-                std::vector<torch::Tensor> all_states1, all_states2;
-                std::vector<std::vector<torch::Tensor>> all_actions1( HeadCount ), all_actions2( HeadCount );
-                std::vector<torch::Tensor> all_rewards1, all_rewards2;
+                        for ( int g = 0; g < games_per_opponent; ++g ) {
+                            // Reuse existing agent and opponent instead of copying
+                            NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( agent );
+                            NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( opp );
 
-                for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
-                    std::vector<torch::Tensor> states1, states2;
-                    std::vector<std::vector<torch::Tensor>> actions1( HeadCount ), actions2( HeadCount );
-                    std::vector<torch::Tensor> rewards1, rewards2;
+                            NNAI::m1WinCount = 0;
+                            NNAI::m2WinCount = 0;
 
-                    NNAI::g_states1 = states1;
-                    NNAI::g_actions1 = actions1;
-                    NNAI::g_rewards1 = rewards1;
-                    NNAI::g_states2 = states2;
-                    NNAI::g_actions2 = actions2;
-                    NNAI::g_rewards2 = rewards2;
+                            // Run the game simulation
+                            NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
-                    // play one game and fill g_states/actions/rewards
-                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
+                            agent_wins += NNAI::m1WinCount;
+                            opp_wins += NNAI::m2WinCount;
+                        }
 
-                    // accumulate data into buffers
-                    all_states1.insert( all_states1.end(), g_states1.begin(), g_states1.end() );
-                    all_rewards1.insert( all_rewards1.end(), g_rewards1.begin(), g_rewards1.end() );
-                    for ( size_t h = 0; h < HeadCount; ++h )
-                        all_actions1[h].insert( all_actions1[h].end(), g_actions1[h].begin(), g_actions1[h].end() );
+                        float score = static_cast<float>( agent_wins ) / ( agent_wins + opp_wins + 1e-6f );
+                        total_score += score;
 
-                    all_states2.insert( all_states2.end(), g_states2.begin(), g_states2.end() );
-                    all_rewards2.insert( all_rewards2.end(), g_rewards2.begin(), g_rewards2.end() );
-                    for ( size_t h = 0; h < HeadCount; ++h )
-                        all_actions2[h].insert( all_actions2[h].end(), g_actions2[h].begin(), g_actions2[h].end() );
+                        // Optional: print only summary per opponent
+                        std::cout << "Opponent " << idx + 1 << ": Agent " << agent_wins << " - Opponent " << opp_wins << " | Score: " << score << std::endl;
+                    }
 
-                    ++game_count;
-                }
+                    float fitness = total_score / static_cast<float>( num_opponents );
+                    std::cout << "Agent Fitness: " << fitness << std::endl;
 
-                // Now train once with all collected data
-                NNAI::tryTrainModel( model1, optimizer1, all_states1, all_actions1, all_rewards1, total_loss1, epoch_total_reward1, device, 1 );
-                if ( !NNAI::isComparing ) {
-                    NNAI::tryTrainModel( model2, optimizer2, all_states2, all_actions2, all_rewards2, total_loss2, epoch_total_reward2, device, 2 );
-                }
+                    return fitness;
+                } );
+
+                // Evolve next generation
+                evolution.evolve();
+
+                // Logging best fitness
+                auto bestStats = evolution.getStats();
+                float bestFitness = 0.0f;
+                for ( auto & s : bestStats )
+                    bestFitness = std::max( bestFitness, s.fitness );
 
                 auto epoch_end = std::chrono::steady_clock::now();
                 std::chrono::duration<double> epoch_duration = epoch_end - epoch_start;
@@ -416,8 +407,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 double avg_epoch_time = total_elapsed_seconds / static_cast<double>( epoch + 1 );
                 int64_t remaining_epochs = num_epochs - ( epoch + 1 );
                 double estimated_remaining_time = avg_epoch_time * remaining_epochs;
-                double games_per_second = ( epoch_duration.count() > 0.0 ) ? ( game_count / epoch_duration.count() ) : 0.0;
-                int percent_complete = static_cast<int>( ( ( epoch + 1.0 ) / num_epochs ) * 100.0 );
 
                 auto format_seconds = []( double seconds ) -> std::string {
                     int hrs = static_cast<int>( seconds ) / 3600;
@@ -428,50 +417,39 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     return std::string( buffer );
                 };
 
-                std::string epochSummary = "Epoch " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs ) + " (" + std::to_string( percent_complete ) + "%)"
+                std::string epochSummary = "Generation " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs )
                                            + " | Time: " + format_seconds( epoch_duration.count() ) + " | ETA: " + format_seconds( estimated_remaining_time )
-                                           + " | GPS: " + std::to_string( games_per_second ) + " | " + name1
-                                           + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss1 / game_count : 0.0 ) + " | " + name2
-                                           + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss2 / game_count : 0.0 ) + " | " + name1
-                                           + " Avg Reward: " + std::to_string( epoch_total_reward1 / game_count ) + " | " + name2 + " Avg Reward: "
-                                           + std::to_string( epoch_total_reward2 / game_count ) + " | " + name1 + " Games Won: " + std::to_string( NNAI::m1WinCount )
-                                           + " | " + name2 + " Games Won: " + std::to_string( NNAI::m2WinCount ) + " | Games Played: " + std::to_string( game_count );
+                                           + " | Best Fitness: " + std::to_string( bestFitness );
 
                 std::cout << epochSummary << std::endl;
-                log_buffer << epochSummary << std::endl; // New: Write to the stringstream buffer
+                log_buffer << epochSummary << std::endl;
 
                 if ( ( epoch + 1 ) % 10 == 0 || epoch == num_epochs - 1 ) {
                     std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
-                    if ( !log_file ) {
-                        std::cerr << "Failed to open training_log.txt for writing. \n";
-                    }
-                    else {
-                        log_file << log_buffer.str(); // New: Write the entire buffer to the file
-                        log_buffer.str( "" ); // New: Clear the buffer
+                    if ( log_file ) {
+                        log_file << log_buffer.str();
+                        log_buffer.str( "" );
                         log_file.close();
                     }
-
-                    NNAI::saveModel( model1, "model_" + name1 + ".pt" );
-                    NNAI::saveModel( model2, "model_" + name2 + ".pt" );
-                    NNAI::saveModel( model3, "model_" + name3 + ".pt" );
+                    evolution.saveBestModel( "best_model.pt" );
                 }
             }
         }
-        catch ( const fheroes2::InvalidDataResources & ex ) {
-            ERROR_LOG( ex.what() )
-            displayMissingResourceWindow();
+        catch ( const std::exception & ex ) {
+            ERROR_LOG( "Exception during neuroevolution: " << ex.what() );
             return EXIT_FAILURE;
         }
+
+        return EXIT_SUCCESS;
     }
     catch ( const std::exception & ex ) {
-        ERROR_LOG( "Exception '" << ex.what() << "' occurred during application runtime." )
+        ERROR_LOG( "Exception '" << ex.what() << "' occurred during application runtime." );
         return EXIT_FAILURE;
     }
     catch ( ... ) {
-        ERROR_LOG( "An unknown exception occurred during application runtime." )
+        ERROR_LOG( "An unknown exception occurred during application runtime." );
         return EXIT_FAILURE;
     }
-    return EXIT_SUCCESS;
 }
 
 int default_main( int argc, char ** argv )

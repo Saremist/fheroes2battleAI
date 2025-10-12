@@ -9109,9 +9109,11 @@
     <ClInclude Include="libtorch\include\torch\library.h" />
     <ClInclude Include="libtorch\include\torch\script.h" />
     <ClInclude Include="libtorch\include\xnnpack.h" />
+    <ClInclude Include="src\fheroes2\ai\neuroevolution.h" />
     <ClInclude Include="src\fheroes2\ai\NN_ai.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\fheroes2\ai\neuroevolution.cpp" />
     <ClCompile Include="src\fheroes2\ai\NN_ai.cpp" />
   </ItemGroup>
   <ItemGroup>
