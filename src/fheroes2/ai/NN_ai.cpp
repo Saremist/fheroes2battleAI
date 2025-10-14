@@ -22,12 +22,12 @@
 
 namespace NNAI
 {
-    std::shared_ptr<BattleLSTM> g_model1 = nullptr;
-    std::shared_ptr<BattleLSTM> g_model2 = nullptr;
+    std::shared_ptr<BattleMLP> g_model1 = nullptr;
+    std::shared_ptr<BattleMLP> g_model2 = nullptr;
     // Global model pointers for each color
-    std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_green = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_red = nullptr;
+    std::shared_ptr<BattleMLP> g_model_blue = nullptr;
+    std::shared_ptr<BattleMLP> g_model_green = nullptr;
+    std::shared_ptr<BattleMLP> g_model_red = nullptr;
 
     std::vector<torch::Tensor> g_states1;
     std::vector<std::vector<torch::Tensor>> g_actions1( HeadCount );
@@ -58,18 +58,16 @@ namespace NNAI
 
     void createAndSaveModel( const std::string & model_path )
     {
-        int64_t input_size = INPUT_SIZE, hidden_size = HIDDEN_SIZE, num_layers = LAYER_NUM;
-
         try {
-            BattleLSTM model( input_size, hidden_size, num_layers );
+            BattleMLP model( INPUT_SIZE );
             torch::save( model, model_path );
         }
         catch ( const std::exception & e ) {
-            std::cerr << "Error creating or saving the model: " << e.what() << std::endl;
+            std::cerr << "Error creating or saving model: " << e.what() << std::endl;
         }
     }
 
-    void saveModel( const BattleLSTM & model, const std::string & model_path )
+    void saveModel( const BattleMLP & model, const std::string & model_path )
     {
         try {
             torch::save( model, model_path );
@@ -80,7 +78,7 @@ namespace NNAI
         }
     }
 
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path )
+    void loadModel( std::shared_ptr<BattleMLP> & modelPtr, const std::string & model_path )
     {
         namespace fs = std::filesystem;
         try {
@@ -88,7 +86,7 @@ namespace NNAI
                 std::cerr << "Model file does not exist at " << model_path << ". Creating new model..." << std::endl;
                 createAndSaveModel( model_path );
             }
-            modelPtr = std::make_shared<BattleLSTM>();
+            modelPtr = std::make_shared<BattleMLP>();
             torch::load( *modelPtr, model_path );
             modelPtr->get()->to( device ); // Move model to device after loading
             std::cout << "Model loaded from " << model_path << std::endl;
@@ -99,7 +97,7 @@ namespace NNAI
         }
     }
 
-    std::shared_ptr<BattleLSTM> getModelByColor( int color )
+    std::shared_ptr<BattleMLP> getModelByColor( int color )
     {
         switch ( color ) {
         case 0x01: // BLUE
@@ -131,48 +129,32 @@ namespace NNAI
             return {};
         }
 
-        BattleLSTM & model = *getModelByColor( currentUnit.GetColor() );
+        BattleMLP & model = *getModelByColor( currentUnit.GetColor() );
 
         if ( !model ) {
             std::cerr << "Error: Neural network model is not initialized!" << std::endl;
             return {};
         }
 
-        torch::Tensor input = prepareBattleLSTMInput( arena, currentUnit );
+        torch::Tensor input = prepareBattleMLPInput( arena, currentUnit );
         if ( currentUnit.GetCount() == 0 ) {
             return {};
         }
 
         const uint8_t color = static_cast<uint8_t>( currentUnit.GetColor() );
 
-        torch::Tensor squeezed_input = input.squeeze( 0 );
+        // torch::Tensor squeezed_input = input.squeeze( 0 );
 
         std::vector<torch::Tensor> nn_output;
 
         if ( color == 0x01 ) { // BLUE team
-            NNAI::g_states1.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states1.size() > 10 ? NNAI::g_states1.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states1.begin() + start_idx, NNAI::g_states1.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
+            NNAI::g_states1.push_back( input.to( NNAI::device ) );
+            nn_output = model->forward( input );
         }
 
         else if ( color == 0x04 ) { // RED team
-            NNAI::g_states2.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states2.size() > 10 ? NNAI::g_states2.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states2.begin() + start_idx, NNAI::g_states2.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
+            NNAI::g_states2.push_back( input.to( NNAI::device ) );
+            nn_output = model->forward( input );
         }
         else {
             std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
@@ -351,11 +333,11 @@ namespace NNAI
         return features;
     }
 
-    torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
+    torch::Tensor prepareBattleMLPInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         // Get all units for both sides
-        const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-        const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+        const Battle::Units enemies( arena.getEnemyForce( arena.getCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+        const Battle::Units allies( arena.getCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
         // Prepare feature vectors
         std::vector<std::vector<float>> featuresList;
@@ -373,7 +355,8 @@ namespace NNAI
                     break;
             }
         }
-        // Pad with zeros if less than 4 allies
+
+        // Pad with zeros if fewer than 4 allies
         if ( !featuresList.empty() ) {
             const int featureSize = static_cast<int>( featuresList[0].size() );
             while ( allyCount < 4 ) {
@@ -392,7 +375,8 @@ namespace NNAI
                     break;
             }
         }
-        // Pad with zeros if less than 5 enemies
+
+        // Pad with zeros if fewer than 5 enemies
         if ( !featuresList.empty() ) {
             const int featureSize = static_cast<int>( featuresList[0].size() );
             while ( enemyCount < 5 ) {
@@ -401,22 +385,21 @@ namespace NNAI
             }
         }
 
-        // Convert to torch tensor: [1, seq_len, input_size]
         if ( featuresList.empty() )
-            return torch::empty( { 1, 0, 0 }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
+            return torch::empty( { 1, 0 }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
 
-        const int seq_len = static_cast<int>( featuresList.size() );
-        const int input_size = static_cast<int>( featuresList[0].size() );
+        std::vector<float> flatFeatures;
+        flatFeatures.reserve( featuresList.size() * featuresList[0].size() );
 
-        torch::Tensor input = torch::zeros( { 1, seq_len, input_size }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
-        for ( int i = 0; i < seq_len; ++i ) {
-            for ( int j = 0; j < input_size; ++j ) {
-                input[0][i][j] = featuresList[i][j];
-            }
-        }
+        for ( const auto & vec : featuresList )
+            flatFeatures.insert( flatFeatures.end(), vec.begin(), vec.end() );
 
-        input = input.view( { 1, 1, seq_len * input_size } );
-        return input;
+        // Convert to torch tensor: [1, total_feature_count]
+        const int totalFeatureCount = static_cast<int>( flatFeatures.size() );
+
+        torch::Tensor input = torch::from_blob( flatFeatures.data(), { 1, totalFeatureCount }, torch::TensorOptions().dtype( torch::kFloat32 ) ).clone();
+
+        return input.to( NNAI::device );
     }
 
     void trainingGameLoop( bool /*isFirstGameRun*/, bool /*isProbablyDemoVersion*/ )
@@ -452,10 +435,10 @@ namespace NNAI
             }
         }
     }
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
+    std::tuple<BattleMLP &, std::string, BattleMLP &, std::string, BattleMLP &, std::string> SelectRandomModels()
     {
         // Pair each model pointer with its name
-        std::vector<std::pair<std::shared_ptr<BattleLSTM>, std::string>> models
+        std::vector<std::pair<std::shared_ptr<BattleMLP>, std::string>> models
             = { { g_model_blue, "blue" },     { g_model_green, "green" },   { g_model_red, "red" }/*,
                 { g_model_yellow, "yellow" }, { g_model_orange, "orange" }, { g_model_purple, "purple" }*/ };
 
@@ -484,7 +467,7 @@ namespace NNAI
         return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second, *models[idx3].first, models[idx3].second );
     }
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
+    void tryTrainModel( BattleMLP & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
                         const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
                         float & epoch_total_reward, torch::Device device, int model_id )
     {

@@ -619,8 +619,8 @@ void AI::BattlePlanner::battleBegins()
 void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions )
 {
     // Current unit can be under the influence of the Hypnotize spell
-    const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-    const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units allies( arena.getCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units enemies( arena.getEnemyForce( arena.getCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
     if ( !NNAI::skipDebugLog ) {
         std::cout << "currentUnit:" << std::endl;
@@ -665,7 +665,7 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
 
 bool AI::BattlePlanner::isLimitOfTurnsExceeded( const Battle::Arena & arena, Battle::Actions & actions )
 {
-    const int currentColor = arena.GetCurrentColor();
+    const int currentColor = arena.getCurrentColor();
 
     // Not the attacker's turn, no further checks
     if ( currentColor != arena.GetArmy1Color() ) {
@@ -1530,7 +1530,7 @@ AI::BattleTargetPair AI::BattlePlanner::meleeUnitOffense( Battle::Arena & arena,
 
     // Current unit can be under the influence of the Hypnotize spell
     const Battle::Units enemies( arena.getEnemyForce( _myColor ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-    const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+    const Battle::Units allies( arena.getCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
     // 1. Choose the best target within reach, if any
     {
