@@ -128,11 +128,11 @@ namespace Battle
         Force & GetForce2() const;
         Force & getForce( const int color ) const;
         Force & getEnemyForce( const int color ) const;
-        Force & GetCurrentForce() const;
+        Force & getCurrentForce() const;
 
         int GetArmy1Color() const;
         int GetArmy2Color() const;
-        int GetCurrentColor() const;
+        int getCurrentColor() const;
         // Returns the color of the army opposite to the army of the given color. If there is no army of the given color,
         // returns the color of the attacking army.
         int GetOppositeColor( const int col ) const;

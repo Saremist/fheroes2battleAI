@@ -918,7 +918,7 @@ int Battle::Arena::DialogBattleHero( HeroBase & hero, const bool buttons, Status
     Cursor & cursor = Cursor::Get();
     cursor.SetThemes( Cursor::POINTER );
 
-    const int currentColor = GetCurrentColor();
+    const int currentColor = getCurrentColor();
     const bool readonly = ( currentColor != hero.GetColor() || !buttons );
     const fheroes2::Sprite & dialog = fheroes2::AGG::GetICN( ( conf.isEvilInterfaceEnabled() ? ICN::VGENBKGE : ICN::VGENBKG ), 0 );
 

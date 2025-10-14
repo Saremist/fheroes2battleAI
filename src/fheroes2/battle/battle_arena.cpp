@@ -829,7 +829,7 @@ int Battle::Arena::GetArmy2Color() const
     return _army2->GetColor();
 }
 
-int Battle::Arena::GetCurrentColor() const
+int Battle::Arena::getCurrentColor() const
 {
     // This method should never be called in cases where there may not be an active unit
     if ( _currentUnit == nullptr ) {
@@ -983,7 +983,7 @@ bool Battle::Arena::isDisableCastSpell( const Spell & spell, std::string * msg /
         const Monster mons( spell );
         assert( mons.isValid() && mons.isElemental() );
 
-        const Unit * elem = GetCurrentForce().FindMode( CAP_SUMMONELEM );
+        const Unit * elem = getCurrentForce().FindMode( CAP_SUMMONELEM );
         if ( elem && elem->GetID() != mons.GetID() ) {
             if ( msg ) {
                 *msg = _( "You may only summon one type of elemental per combat." );
@@ -991,7 +991,7 @@ bool Battle::Arena::isDisableCastSpell( const Spell & spell, std::string * msg /
             return true;
         }
 
-        if ( GetFreePositionNearHero( GetCurrentColor() ) < 0 ) {
+        if ( GetFreePositionNearHero( getCurrentColor() ) < 0 ) {
             if ( msg ) {
                 *msg = _( "There is no open space adjacent to your hero where you can summon an Elemental to." );
             }
@@ -1317,7 +1317,7 @@ const HeroBase * Battle::Arena::getEnemyCommander( const int color ) const
 
 const HeroBase * Battle::Arena::GetCurrentCommander() const
 {
-    return getCommander( GetCurrentColor() );
+    return getCommander( getCurrentColor() );
 }
 
 Battle::Unit * Battle::Arena::CreateElemental( const Spell & spell )
@@ -1328,7 +1328,7 @@ Battle::Unit * Battle::Arena::CreateElemental( const Spell & spell )
     const HeroBase * hero = GetCurrentCommander();
     assert( hero != nullptr );
 
-    const int32_t idx = GetFreePositionNearHero( GetCurrentColor() );
+    const int32_t idx = GetFreePositionNearHero( getCurrentColor() );
     assert( Board::isValidIndex( idx ) );
 
     const Monster mons( spell );
@@ -1350,7 +1350,7 @@ Battle::Unit * Battle::Arena::CreateElemental( const Spell & spell )
     elem->SetModes( CAP_SUMMONELEM );
     elem->SetArmy( hero->GetArmy() );
 
-    GetCurrentForce().push_back( elem );
+    getCurrentForce().push_back( elem );
 
     return elem;
 }
@@ -1366,7 +1366,7 @@ Battle::Unit * Battle::Arena::CreateMirrorImage( Unit & unit )
     unit.SetMirror( mirrorUnit );
     unit.SetModes( CAP_MIRROROWNER );
 
-    GetCurrentForce().push_back( mirrorUnit );
+    getCurrentForce().push_back( mirrorUnit );
 
     return mirrorUnit;
 }
@@ -1438,9 +1438,9 @@ Battle::Force & Battle::Arena::getEnemyForce( const int color ) const
     return ( _army1->GetColor() == color ) ? *_army2 : *_army1;
 }
 
-Battle::Force & Battle::Arena::GetCurrentForce() const
+Battle::Force & Battle::Arena::getCurrentForce() const
 {
-    return getForce( GetCurrentColor() );
+    return getForce( getCurrentColor() );
 }
 
 Battle::Result & Battle::Arena::GetResult()
@@ -1454,9 +1454,9 @@ bool Battle::Arena::AutoBattleInProgress() const
         return false;
     }
 
-    if ( _autoBattleColors & GetCurrentColor() ) {
+    if ( _autoBattleColors & getCurrentColor() ) {
         // Auto battle mode cannot be enabled for a player controlled by AI
-        assert( !( GetCurrentForce().GetControl() & CONTROL_AI ) );
+        assert( !( getCurrentForce().GetControl() & CONTROL_AI ) );
 
         return true;
     }
@@ -1470,11 +1470,11 @@ bool Battle::Arena::EnemyOfAIHasAutoBattleInProgress() const
         return false;
     }
 
-    if ( !( GetCurrentForce().GetControl() & CONTROL_AI ) ) {
+    if ( !( getCurrentForce().GetControl() & CONTROL_AI ) ) {
         return false;
     }
 
-    const Force & enemyForce = getEnemyForce( GetCurrentColor() );
+    const Force & enemyForce = getEnemyForce( getCurrentColor() );
 
     if ( enemyForce.GetControl() & CONTROL_AI ) {
         return false;
@@ -1489,5 +1489,5 @@ bool Battle::Arena::CanToggleAutoBattle() const
         return false;
     }
 
-    return !( GetCurrentForce().GetControl() & CONTROL_AI );
+    return !( getCurrentForce().GetControl() & CONTROL_AI );
 }

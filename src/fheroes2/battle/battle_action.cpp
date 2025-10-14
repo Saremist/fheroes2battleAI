@@ -459,7 +459,7 @@ void Battle::Arena::ApplyActionSpellCast( Command & cmd )
 
     const Spell spell( cmd.GetNextValue() );
 
-    HeroBase * commander = GetCurrentForce().GetCommander();
+    HeroBase * commander = getCurrentForce().GetCommander();
 
     if ( !checkParameters( spell, commander ) ) {
         ERROR_LOG( "Invalid parameters: " << spell.GetName() )
@@ -799,7 +799,7 @@ void Battle::Arena::ApplyActionMorale( Command & cmd )
 
 void Battle::Arena::ApplyActionRetreat( const Command & /* cmd */ )
 {
-    const int currentColor = GetCurrentColor();
+    const int currentColor = getCurrentColor();
 
     if ( !CanRetreatOpponent( currentColor ) ) {
         ERROR_LOG( "Preconditions were not met" )
@@ -830,18 +830,18 @@ void Battle::Arena::ApplyActionSurrender( const Command & /* cmd */ )
         const Arena * arena = GetArena();
         assert( arena != nullptr );
 
-        if ( !arena->CanSurrenderOpponent( arena->GetCurrentColor() ) ) {
+        if ( !arena->CanSurrenderOpponent( arena->getCurrentColor() ) ) {
             return false;
         }
 
-        if ( !world.GetKingdom( arena->GetCurrentColor() ).AllowPayment( cost ) ) {
+        if ( !world.GetKingdom( arena->getCurrentColor() ).AllowPayment( cost ) ) {
             return false;
         }
 
         return true;
     };
 
-    const int currentColor = GetCurrentColor();
+    const int currentColor = getCurrentColor();
 
     if ( _army1->GetColor() == currentColor ) {
         Funds cost;
@@ -1418,7 +1418,7 @@ void Battle::Arena::ApplyActionSpellSummonElemental( const Command & /* cmd */, 
             return false;
         }
 
-        const int32_t idx = arena->GetFreePositionNearHero( arena->GetCurrentColor() );
+        const int32_t idx = arena->GetFreePositionNearHero( arena->getCurrentColor() );
         if ( !Board::isValidIndex( idx ) ) {
             return false;
         }

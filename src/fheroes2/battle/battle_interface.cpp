@@ -2895,7 +2895,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
     }
     else if ( _opponent1 && le.isMouseCursorPosInArea( _opponent1->GetArea() + _interfacePosition.getPosition() ) ) {
         const fheroes2::Rect opponent1Area = _opponent1->GetArea() + _interfacePosition.getPosition();
-        if ( arena.GetCurrentColor() == arena.GetArmy1Color() ) {
+        if ( arena.getCurrentColor() == arena.GetArmy1Color() ) {
             if ( _opponent1->GetHero()->isCaptain() ) {
                 msg = _( "View Captain's options" );
             }
@@ -2931,7 +2931,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
     }
     else if ( _opponent2 && le.isMouseCursorPosInArea( _opponent2->GetArea() + _interfacePosition.getPosition() ) ) {
         const fheroes2::Rect opponent2Area = _opponent2->GetArea() + _interfacePosition.getPosition();
-        if ( arena.GetCurrentColor() == arena.GetForce2().GetColor() ) {
+        if ( arena.getCurrentColor() == arena.GetForce2().GetColor() ) {
             if ( _opponent2->GetHero()->isCaptain() ) {
                 msg = _( "View Captain's options" );
             }
@@ -6451,8 +6451,8 @@ void Battle::Interface::InterruptAutoBattleIfRequested( LocalEvent & le )
     }
 
     // Identify which color requested the auto battle interrupt.
-    int color = arena.GetCurrentColor();
-    if ( arena.GetCurrentForce().GetControl() & CONTROL_AI ) {
+    int color = arena.getCurrentColor();
+    if ( arena.getCurrentForce().GetControl() & CONTROL_AI ) {
         color = arena.GetOppositeColor( color );
     }
 
@@ -6546,11 +6546,11 @@ void Battle::Interface::ProcessingHeroDialogResult( const int result, Actions & 
     // surrender
     case 3: {
         if ( arena.CanSurrenderOpponent( _currentUnit->GetCurrentOrArmyColor() ) ) {
-            const HeroBase * enemy = arena.getEnemyCommander( arena.GetCurrentColor() );
+            const HeroBase * enemy = arena.getEnemyCommander( arena.getCurrentColor() );
 
             if ( enemy ) {
-                const int32_t cost = arena.GetCurrentForce().GetSurrenderCost();
-                Kingdom & kingdom = world.GetKingdom( arena.GetCurrentColor() );
+                const int32_t cost = arena.getCurrentForce().GetSurrenderCost();
+                Kingdom & kingdom = world.GetKingdom( arena.getCurrentColor() );
 
                 if ( DialogBattleSurrender( *enemy, cost, kingdom ) ) {
                     actions.emplace_back( Command::SURRENDER );
