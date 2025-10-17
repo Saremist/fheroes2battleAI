@@ -490,8 +490,6 @@ namespace NNAI
             action_batches.push_back( ab );
         }
 
-        optimizer.zero_grad();
-
         // === Forward pass ===
         auto logits = model->forward( state_batch ); // vector< Tensor >, one per head
 
@@ -514,26 +512,50 @@ namespace NNAI
         auto std = returns.std( /*unbiased=*/false ).detach();
         auto norm_rewards = ( returns - mean ) / ( std + 1e-6f );
 
-        // === Loss computation ===
-        torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
-        const float entropy_coef = 0.05f; // stronger entropy
-
-        for ( size_t h = 0; h < logits.size(); ++h ) {
-            auto log_prob = torch::nn::functional::log_softmax( logits[h], /*dim=*/1 );
-            auto idx = action_batches[h].unsqueeze( 1 ); // [B,1]
-            auto selected_log_prob = log_prob
-                                         .gather( 1, idx ) // pick chosen actions
-                                         .squeeze( 1 ); // [B]
-
-            // Entropy regularization
-            auto prob = torch::exp( log_prob );
-            auto entropy = -( prob * log_prob ).sum( 1 ).mean();
-
-            // Policy gradient loss
-            auto policy_loss = -( selected_log_prob * norm_rewards ).mean();
-            loss += policy_loss - entropy_coef * entropy;
+        // Ensure norm_rewards is a 1-D float tensor on the right device and detached
+        auto normalized_rewards = norm_rewards.detach().to( device ).to( torch::kFloat32 );
+        if ( normalized_rewards.dim() == 2 && normalized_rewards.size( 1 ) == 1 ) {
+            normalized_rewards = normalized_rewards.squeeze( 1 ); // make [B]
         }
 
+        // === Compute policy gradient loss with entropy regularization ===
+        // accumulate loss as a tensor but avoid in-place ops
+        torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
+        const float entropy_coef = 0.05f;
+        const size_t T = logits.size();
+        const size_t B_check = logits.size() ? logits[0].size( 0 ) : 0;
+
+        // Sum losses across timesteps, then divide by T (so scale is independent of T)
+        torch::Tensor summed_loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
+
+        for ( size_t t = 0; t < T; ++t ) {
+            // compute log probs [B, A]
+            auto log_prob = torch::nn::functional::log_softmax( logits[t], /*dim=*/1 );
+
+            // make sure actions are long and on correct device
+            auto idx = action_batches[t].to( device ).to( torch::kLong ).unsqueeze( 1 ); // [B,1]
+
+            // selected log prob -> [B]
+            auto selected_log_prob = log_prob.gather( 1, idx ).squeeze( 1 );
+
+            // policy gradient term: - (adv * logpi).mean()
+            // ensure normalized_rewards is same shape [B]
+            TORCH_CHECK( normalized_rewards.sizes()[0] == selected_log_prob.sizes()[0], "reward / logprob batch size mismatch" );
+            auto policy_loss = -( selected_log_prob * normalized_rewards ).mean(); // scalar
+
+            // entropy regularization (scalar)
+            auto prob = torch::exp( log_prob ); // [B, A]
+            auto entropy_per_batch = -( prob * log_prob ).sum( 1 ); // [B]
+            auto entropy = entropy_per_batch.mean(); // scalar
+
+            // accumulate (out of place)
+            summed_loss = summed_loss + policy_loss - entropy_coef * entropy;
+        }
+
+        // final loss averaged over timesteps
+        loss = summed_loss / static_cast<double>( T );
+
+        optimizer.zero_grad();
         // === Backprop ===
         loss.backward();
         optimizer.step();
