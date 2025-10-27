@@ -75,7 +75,7 @@
 #include "image_palette.h"
 #include "localevent.h"
 #include "logging.h"
-#include "neuroevolution.h";
+#include "neuroevolution.h"
 #include "render_processor.h"
 #include "screen.h"
 #include "settings.h"
