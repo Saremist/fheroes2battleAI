@@ -40,8 +40,8 @@ namespace NNAI
     bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
     bool isComparing = true; // Defines if game is comparing NNAI with Original AI
 
-    float m1Reward = .0f;
-    float m2Reward = .0f;
+    float m1Reward = 0.0f;
+    float m2Reward = 0.0f;
 
     torch::Device device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
