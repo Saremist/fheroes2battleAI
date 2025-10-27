@@ -1,5 +1,7 @@
 ﻿#pragma once
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <numeric>
 #include <random>
