@@ -40,8 +40,8 @@ namespace NNAI
     bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
     bool isComparing = true; // Defines if game is comparing NNAI with Original AI
 
-    int m1WinCount = 0;
-    int m2WinCount = 0;
+    float m1Reward = .0f;
+    float m2Reward = .0f;
 
     torch::Device device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
@@ -595,15 +595,9 @@ namespace Battle
 
         // Win condition
         if ( currEnemyHP == 0 ) {
-            reward += 100;
+            reward += 1000;
             if ( !NNAI::skipDebugLog )
                 std::cout << "[DEBUG] Win detected: Enemy defeated." << std::endl;
-            if ( color == currArena.GetArmy1Color() ) {
-                NNAI::m1WinCount++;
-            }
-            else {
-                NNAI::m2WinCount++;
-            }
         }
 
         // Update for next turn

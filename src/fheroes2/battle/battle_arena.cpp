@@ -531,11 +531,13 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
                     float reward1 = Battle::calculateReward( *this, this->GetArmy1Color() );
                     NNAI::g_rewards1.push_back(
                         torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
+                    NNAI::m1Reward += reward1;
                 }
                 else {
                     float reward2 = Battle::calculateReward( *this, this->GetArmy2Color() );
                     NNAI::g_rewards2.push_back(
                         torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
+                    NNAI::m2Reward += reward2;
                 }
             }
             SkipingRoundFlag = false;

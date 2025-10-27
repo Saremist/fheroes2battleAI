@@ -349,47 +349,30 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 auto epoch_start = std::chrono::steady_clock::now();
 
                 // Evaluate all agents
-                evolution.evaluatePopulation( [&]( NNAI::BattleCNN & agent ) -> float {
-                    int num_opponents = 2; // Reduced for faster evaluation
+                evolution.evaluatePopulation( [&]( NNAI::BattleCNN & agent, NNAI::BattleCNN & opp ) -> float {
+                    int games_per_opponent = 5; // keep reduced for speed
+                    float agent_reward = 0.f;
+                    float opp_reward = 0.f;
 
-                    int games_per_opponent = 1; // Reduced for faster evaluation
-                    float total_score = 0.0f;
+                    for ( int g = 0; g < games_per_opponent; ++g ) {
+                        // Construct shared_ptr copies for the global models from the references passed in
+                        NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( agent );
+                        NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( opp );
 
-                    // Sample opponents (return shared_ptrs or references)
-                    std::vector<std::shared_ptr<NNAI::BattleCNN>> opponents = evolution.sampleOpponents( agent, num_opponents );
+                        NNAI::m1Reward = 0.f;
+                        NNAI::m2Reward = 0.f;
 
-                    for ( size_t idx = 0; idx < opponents.size(); ++idx ) {
-                        NNAI::BattleCNN & opp = *opponents[idx]; // reference to opponent
+                        // Run the game simulation — presumably this uses g_model1/g_model2
+                        NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
 
-                        int agent_wins = 0;
-                        int opp_wins = 0;
-
-                        for ( int g = 0; g < games_per_opponent; ++g ) {
-                            // Reuse existing agent and opponent instead of copying
-                            NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( agent );
-                            NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( opp );
-
-                            NNAI::m1WinCount = 0;
-                            NNAI::m2WinCount = 0;
-
-                            // Run the game simulation
-                            NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
-
-                            agent_wins += NNAI::m1WinCount;
-                            opp_wins += NNAI::m2WinCount;
-                        }
-
-                        float score = static_cast<float>( agent_wins ) / ( agent_wins + opp_wins + 1e-6f );
-                        total_score += score;
-
-                        // Optional: print only summary per opponent
-                        std::cout << "Opponent " << idx + 1 << ": Agent " << agent_wins << " - Opponent " << opp_wins << " | Score: " << score << std::endl;
+                        agent_reward += NNAI::m1Reward;
+                        opp_reward += NNAI::m2Reward;
                     }
 
-                    float fitness = total_score / static_cast<float>( num_opponents );
-                    std::cout << "Agent Fitness: " << fitness << std::endl;
+                    float score = static_cast<float>( agent_reward ) / ( agent_reward + opp_reward + 1e-6f );
+                    std::cout << "Agent " << agent_reward << " - Opponent " << opp_reward << " | Score: " << score << std::endl;
 
-                    return fitness;
+                    return score;
                 } );
 
                 // Evolve next generation

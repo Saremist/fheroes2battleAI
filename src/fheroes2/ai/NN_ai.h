@@ -44,8 +44,8 @@ namespace NNAI
     extern std::vector<std::vector<torch::Tensor>> g_actions2;
     extern std::vector<torch::Tensor> g_rewards2;
 
-    extern int m1WinCount;
-    extern int m2WinCount;
+    extern float m1Reward;
+    extern float m2Reward;
 
     extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
     extern bool skipDebugLog; // Defines if post battle dialog will open or the training loop will continue
