@@ -302,7 +302,7 @@ Modified from the original fheroes2::Game::mainGameLoop() by
 Milan Wr\F3blewski for the purpose of Engineer thesis.
 */
 
-int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES )
+int NNAI::training_main( int argc, char ** argv, int64_t num_epochs )
 {
 #if defined( _WIN32 )
     assert( argc == __argc );
@@ -417,15 +417,13 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 std::cout << epochSummary << std::endl;
                 log_buffer << epochSummary << std::endl;
 
-                if ( ( epoch + 1 ) % 10 == 0 || epoch == num_epochs - 1 ) {
-                    std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
-                    if ( log_file ) {
-                        log_file << log_buffer.str();
-                        log_buffer.str( "" );
-                        log_file.close();
-                    }
-                    evolution.saveBestModel( "best_model.pt" );
+                std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
+                if ( log_file ) {
+                    log_file << log_buffer.str();
+                    log_buffer.str( "" );
+                    log_file.close();
                 }
+                evolution.saveBestModel( "best_model.pt" );
             }
         }
         catch ( const std::exception & ex ) {
@@ -564,23 +562,13 @@ int main( int argc, char ** argv )
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
 
-    NNAI::initializeGlobalModels();
     if ( NNAI::isTraining ) {
-        auto model1 = *NNAI::g_model_blue;
-        auto model2 = *NNAI::g_model_red;
-
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 10; // Set the max turns without deaths for the planner
-
-        model1->to( NNAI::device ); // Ensure model is on device
-        model2->to( NNAI::device );
-
-        return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 100 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 100000 );
     }
 
-    NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( *NNAI::g_model_blue );
-    NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( *NNAI::g_model_red );
-    NNAI::g_model1->get()->to( NNAI::device );
-    NNAI::g_model2->get()->to( NNAI::device );
+    NNAI::loadModel( NNAI::g_model1, "best_model.pt" );
+    NNAI::loadModel( NNAI::g_model2, "best_model.pt" );
 
     return default_main( argc, argv );
 }

@@ -36,13 +36,6 @@ namespace NNAI
 
     extern std::shared_ptr<NNAI::BattleCNN> g_model1;
     extern std::shared_ptr<NNAI::BattleCNN> g_model2;
-    // Global model pointers for each color
-    extern std::shared_ptr<BattleCNN> g_model_blue;
-    extern std::shared_ptr<BattleCNN> g_model_green;
-    extern std::shared_ptr<BattleCNN> g_model_red;
-    extern std::shared_ptr<BattleCNN> g_model_yellow;
-    extern std::shared_ptr<BattleCNN> g_model_orange;
-    extern std::shared_ptr<BattleCNN> g_model_purple;
 
     extern std::vector<torch::Tensor> g_states1;
     extern std::vector<std::vector<torch::Tensor>> g_actions1;
@@ -234,12 +227,10 @@ namespace NNAI
     TORCH_MODULE( BattleCNN );
 
     // Model management
-    void initializeGlobalModels();
     void createAndSaveModel( const std::string & model_path );
     std::shared_ptr<BattleCNN> getModelByColor( int color );
     void saveModel( const BattleCNN & model, const std::string & model_path );
     void loadModel( std::shared_ptr<BattleCNN> & modelPtr, const std::string & model_path );
-    // torch::Tensor preprocessInput( const std::vector<float> & raw_data );
     torch::Tensor prepareBattleCNNInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
@@ -248,7 +239,7 @@ namespace NNAI
 
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
-    int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
+    int training_main( int argc, char ** argv, int64_t num_epochs );
 
     bool isNNControlled( int color ); // TODO MW
 

@@ -56,13 +56,6 @@ namespace NNAI
     int prevEnemyHP1 = -1, prevAllyHP1 = -1, prevEnemyUnits1 = -1, prevAllyUnits1 = -1;
     int prevEnemyHP2 = -1, prevAllyHP2 = -1, prevEnemyUnits2 = -1, prevAllyUnits2 = -1;
 
-    void initializeGlobalModels()
-    {
-        loadModel( NNAI::g_model_blue, "model_blue.pt" );
-        loadModel( NNAI::g_model_green, "model_green.pt" );
-        loadModel( NNAI::g_model_red, "model_red.pt" );
-    }
-
     void createAndSaveModel( const std::string & model_path )
     {
         int64_t input_size = INPUT_SIZE, hidden_size = HIDDEN_SIZE, num_layers = LAYER_NUM;

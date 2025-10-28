@@ -1,5 +1,6 @@
 #include "neuroevolution.h"
 
+#include <filesystem>
 #include <iostream>
 
 #include "NN_ai.h"
@@ -17,9 +18,47 @@ Neuroevolution::Neuroevolution( size_t populationSize, float mutationSigma, floa
 void Neuroevolution::initializePopulation()
 {
     population.clear();
-    stats.resize( POP_SIZE );
-    for ( size_t i = 0; i < POP_SIZE; ++i )
-        population.push_back( std::make_shared<BattleCNN>() );
+    population.reserve( POP_SIZE );
+    stats.assign( POP_SIZE, {} ); // zero/default-fill stats
+
+    const std::string bestModelPath = "best_model.pt";
+    bool hasBestModel = false;
+
+    // Try to load the saved module once (only to verify it's usable)
+    try {
+        if ( std::filesystem::exists( bestModelPath ) ) {
+            // Attempt to load to ensure the file is valid
+            torch::jit::script::Module tmp = torch::jit::load( bestModelPath );
+            hasBestModel = true;
+            std::cout << "[Neuroevolution] Found and validated best_model.pt.\n";
+        }
+        else {
+            std::cout << "[Neuroevolution] No best_model.pt found — using random initialization.\n";
+        }
+    }
+    catch ( const std::exception & ex ) {
+        hasBestModel = false;
+        std::cerr << "[Neuroevolution] Failed to validate best_model.pt: " << ex.what() << " — falling back to random initialization.\n";
+    }
+
+    // Build population
+    for ( size_t i = 0; i < POP_SIZE; ++i ) {
+        auto model = std::make_shared<BattleCNN>();
+
+        if ( hasBestModel ) {
+            try {
+                loadModel( model, bestModelPath ); // apply pretrained weights
+                // model->mutate(0.01f); // optional diversity injection
+            }
+            catch ( const std::exception & ex ) {
+                std::cerr << "[Neuroevolution] Error applying best_model.pt to agent " << i << ": " << ex.what() << '\n';
+            }
+        }
+
+        population.emplace_back( std::move( model ) );
+    }
+
+    std::cout << "[Neuroevolution] Population initialized with " << ( hasBestModel ? "best_model.pt." : "random weights." ) << '\n';
 }
 
 torch::Tensor Neuroevolution::flattenParameters( const BattleCNN & model ) const
