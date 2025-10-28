@@ -39,7 +39,7 @@ namespace NNAI
         // Save best model to file
         void saveBestModel( const std::string & path ) const;
 
-        std::vector<std::shared_ptr<BattleCNN>> Neuroevolution::sampleOpponents( std::shared_ptr<BattleCNN> agent, int num_opponents );
+        std::vector<std::shared_ptr<BattleCNN>> sampleOpponents( std::shared_ptr<BattleCNN> agent, int num_opponents );
 
         // Accessors
         const std::vector<std::shared_ptr<BattleCNN>> & getPopulation() const
