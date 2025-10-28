@@ -56,6 +56,8 @@
 #include <cassert>
 #endif
 
+#include <ostream>
+
 #include "NN_ai.h"
 #include "agg.h"
 #include "agg_image.h"
@@ -83,6 +85,14 @@
 #include "timing.h"
 #include "ui_tool.h"
 #include "zzlib.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <torch/script.h>
+#include <torch/torch.h>
+#pragma GCC diagnostic pop
 
 #pragma warning( disable : 4996 )
 
@@ -525,10 +535,6 @@ int default_main( int argc, char ** argv )
     }
     return EXIT_SUCCESS;
 }
-
-#include <ostream>
-
-#include <torch/torch.h>
 
 int main( int argc, char ** argv )
 {

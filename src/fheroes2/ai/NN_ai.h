@@ -12,7 +12,14 @@
 #include <ai_battle.h>
 #include <battle_board.h>
 #include <battle_troop.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <torch/script.h>
 #include <torch/torch.h>
+#pragma GCC diagnostic pop
 
 #include "battle_command.h"
 #include "ostream"

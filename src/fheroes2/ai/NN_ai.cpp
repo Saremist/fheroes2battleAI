@@ -5,7 +5,14 @@
 #include <filesystem>
 #include <iostream>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <torch/script.h>
 #include <torch/torch.h>
+#pragma GCC diagnostic pop
 
 #include "battle.h"
 #include "battle_command.h"
