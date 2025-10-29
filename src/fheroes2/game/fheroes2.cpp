@@ -365,6 +365,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs )
                     float opp_reward = 0.0f;
 
                     for ( int g = 0; g < games_per_opponent; ++g ) {
+                        NNAI::g_model1.reset();
+                        NNAI::g_model2.reset();
+
                         // Construct shared_ptr copies for the global models from the references passed in
                         NNAI::g_model1 = std::make_shared<NNAI::BattleCNN>( agent );
                         NNAI::g_model2 = std::make_shared<NNAI::BattleCNN>( opp );
