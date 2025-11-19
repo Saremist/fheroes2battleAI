@@ -526,18 +526,7 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
 
         while ( !actions.empty() ) {
             ApplyAction( actions.front() );
-            if ( NNAI::isTraining && !SkipingRoundFlag ) {
-                if ( _currentUnit->GetArmyColor() == _army1->GetColor() ) {
-                    float reward1 = Battle::calculateReward( *this, this->GetArmy1Color() );
-                    NNAI::g_rewards1.push_back(
-                        torch::tensor( reward1, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
-                }
-                else {
-                    float reward2 = Battle::calculateReward( *this, this->GetArmy2Color() );
-                    NNAI::g_rewards2.push_back(
-                        torch::tensor( reward2, torch::dtype( torch::kFloat32 ) ).clone().detach().contiguous().to( NNAI::device ).to( torch::kFloat ) );
-                }
-            }
+
             SkipingRoundFlag = false;
             actions.pop_front();
 
@@ -658,6 +647,17 @@ void Battle::Arena::Turns()
             }
 
             UnitTurn( orderHistory );
+
+            if ( NNAI::isTraining ) {
+                bool done = false;
+                torch::Tensor next_state = NNAI::prepareStateTensor( *this, *_currentUnit );
+                int reward = calculateReward( NNAI::saved_game_state, next_state, _currentUnit->GetArmyColor() );
+                if ( !this->GetCommander1()->GetArmy().isValid() || !this->GetCommander2()->GetArmy().isValid() ) {
+                    done = true;
+                }
+                NNAI::remember_experience( NNAI::saved_game_state.detach().cpu(), (uint64_t)NNAI::saved_action, (double)reward, next_state.detach().cpu(), done,
+                                           _currentUnit->GetColor() );
+            }
         }
     }
 

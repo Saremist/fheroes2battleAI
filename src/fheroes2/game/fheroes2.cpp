@@ -340,83 +340,109 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
             const CursorRestorer cursorRestorer( true, Cursor::POINTER );
             double total_elapsed_seconds = 0.0;
 
-            std::stringstream log_buffer; // New: Buffer to hold log messages
+            std::stringstream log_buffer; // Buffer to hold log messages
 
+            // Initialize Q-models and per-color replay buffers
+            initialize_qmodels( device );
+
+            // Build model entries: include color id so we can pick buffer easily
+            struct ModelEntry
+            {
+                std::shared_ptr<QNetwork> model;
+                std::shared_ptr<QNetwork> target;
+                std::string name;
+                int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
+            };
+            std::vector<ModelEntry> models;
+            if ( g_qmodel_blue )
+                models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01 } );
+            if ( g_qmodel_red )
+                models.push_back( { g_qmodel_red, g_target_red, "red", 0x04 } );
+            // add others similarly if you load them
+
+            if ( models.empty() ) {
+                std::cerr << "No Q-models loaded. Aborting training." << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            // Create one optimizer per model (wrap new Adam into unique_ptr<Optimizer>)
+            std::vector<std::pair<std::shared_ptr<QNetwork>, std::unique_ptr<torch::optim::Optimizer>>> optimizers;
+            for ( auto & me : models ) {
+                me.model->get()->train();
+                auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
+                optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
+            }
+
+            // Epoch loop
             for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
-                NNAI::m1WinCount = 0;
-                NNAI::m2WinCount = 0;
-                auto epoch_start = std::chrono::steady_clock::now(); // CHRONO
+                auto epoch_start = std::chrono::steady_clock::now();
 
-                auto selection = NNAI::SelectRandomModels();
-                BattleLSTM & model1 = std::get<0>( selection );
-                std::string name1 = std::get<1>( selection );
-                BattleLSTM & model2 = std::get<2>( selection );
-                std::string name2 = std::get<3>( selection );
-                BattleLSTM & model3 = std::get<4>( selection );
-                std::string name3 = std::get<5>( selection );
+                float total_loss_all_models = 0.0f;
+                int games_played = 0;
+                float epoch_total_reward = 0.0f;
 
-                if ( NNAI::isComparing ) {
-                    name2 = "Original AI";
-                }
-
-                model1->train();
-                model2->train();
-                NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( model1 );
-                NNAI::g_model2 = std::make_shared<NNAI::BattleLSTM>( model2 );
-
-                torch::optim::Adam optimizer1( model1->parameters(), torch::optim::AdamOptions( learning_rate ) );
-                torch::optim::Adam optimizer2( model2->parameters(), torch::optim::AdamOptions( learning_rate ) );
-
-                float total_loss1 = 0.0, total_loss2 = 0.0;
-                int game_count = 0;
-                float epoch_total_reward1 = 0.0, epoch_total_reward2 = 0.0;
-
-                std::vector<torch::Tensor> all_states1, all_states2;
-                std::vector<std::vector<torch::Tensor>> all_actions1( HeadCount ), all_actions2( HeadCount );
-                std::vector<torch::Tensor> all_rewards1, all_rewards2;
-
-                for ( int i = 0; i < NUM_SELF_PLAY_GAMES; ++i ) {
-                    std::vector<torch::Tensor> states1, states2;
-                    std::vector<std::vector<torch::Tensor>> actions1( HeadCount ), actions2( HeadCount );
-                    std::vector<torch::Tensor> rewards1, rewards2;
-
-                    NNAI::g_states1 = states1;
-                    NNAI::g_actions1 = actions1;
-                    NNAI::g_rewards1 = rewards1;
-                    NNAI::g_states2 = states2;
-                    NNAI::g_actions2 = actions2;
-                    NNAI::g_rewards2 = rewards2;
-
-                    // play one game and fill g_states/actions/rewards
+                // Run self-play games for this epoch; trainingGameLoop should call remember_experience(..., color)
+                for ( int64_t g = 0; g < NUM_SELF_PLAY_GAMES; ++g ) {
                     NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
-
-                    // accumulate data into buffers
-                    all_states1.insert( all_states1.end(), g_states1.begin(), g_states1.end() );
-                    all_rewards1.insert( all_rewards1.end(), g_rewards1.begin(), g_rewards1.end() );
-                    for ( size_t h = 0; h < HeadCount; ++h )
-                        all_actions1[h].insert( all_actions1[h].end(), g_actions1[h].begin(), g_actions1[h].end() );
-
-                    all_states2.insert( all_states2.end(), g_states2.begin(), g_states2.end() );
-                    all_rewards2.insert( all_rewards2.end(), g_rewards2.begin(), g_rewards2.end() );
-                    for ( size_t h = 0; h < HeadCount; ++h )
-                        all_actions2[h].insert( all_actions2[h].end(), g_actions2[h].begin(), g_actions2[h].end() );
-
-                    ++game_count;
+                    ++games_played;
                 }
 
-                // Now train once with all collected data
-                NNAI::tryTrainModel( model1, optimizer1, all_states1, all_actions1, all_rewards1, total_loss1, epoch_total_reward1, device, 1 );
-                if ( !NNAI::isComparing ) {
-                    NNAI::tryTrainModel( model2, optimizer2, all_states2, all_actions2, all_rewards2, total_loss2, epoch_total_reward2, device, 2 );
+                // Optimization: run a small number of optimization passes per epoch.
+                // IMPORTANT: use per-color replay buffers here.
+                const int opt_steps = 1;
+                float epoch_loss = 0.0f;
+
+                for ( int step = 0; step < opt_steps; ++step ) {
+                    for ( size_t mi = 0; mi < models.size(); ++mi ) {
+                        auto & me = models[mi];
+                        auto & opt_pair = optimizers[mi];
+                        auto & model_ptr = opt_pair.first;
+                        auto & optimizer_ptr = opt_pair.second;
+
+                        // pick the correct replay buffer for this model's color
+                        std::shared_ptr<ReplayBuffer> buf = nullptr;
+                        if ( me.color == 0x01 )
+                            buf = g_replay_buffer_blue;
+                        else if ( me.color == 0x04 )
+                            buf = g_replay_buffer_red;
+                        // extend mapping if you add more colors
+
+                        if ( model_ptr && optimizer_ptr && buf ) {
+                            try {
+                                // Only optimize if buffer has enough transitions for a minibatch
+                                if ( buf->size() >= BATCH_SIZE ) {
+                                    optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, epoch_loss );
+                                }
+                            }
+                            catch ( const std::exception & ex ) {
+                                std::cerr << "optimize_model exception for model " << me.name << ": " << ex.what() << std::endl;
+                            }
+                        }
+                    }
                 }
 
+                total_loss_all_models += epoch_loss;
+
+                // Soft-update target networks
+                for ( auto & me : models ) {
+                    if ( me.target && me.model ) {
+                        try {
+                            soft_update_target( *me.model, *me.target, TAU );
+                        }
+                        catch ( const std::exception & ex ) {
+                            std::cerr << "soft_update_target exception for model " << me.name << ": " << ex.what() << std::endl;
+                        }
+                    }
+                }
+
+                // Logging / timing like original training_main
                 auto epoch_end = std::chrono::steady_clock::now();
                 std::chrono::duration<double> epoch_duration = epoch_end - epoch_start;
                 total_elapsed_seconds += epoch_duration.count();
                 double avg_epoch_time = total_elapsed_seconds / static_cast<double>( epoch + 1 );
                 int64_t remaining_epochs = num_epochs - ( epoch + 1 );
                 double estimated_remaining_time = avg_epoch_time * remaining_epochs;
-                double games_per_second = ( epoch_duration.count() > 0.0 ) ? ( game_count / epoch_duration.count() ) : 0.0;
+                double games_per_second = ( epoch_duration.count() > 0.0 ) ? ( games_played / epoch_duration.count() ) : 0.0;
                 int percent_complete = static_cast<int>( ( ( epoch + 1.0 ) / num_epochs ) * 100.0 );
 
                 auto format_seconds = []( double seconds ) -> std::string {
@@ -428,34 +454,56 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                     return std::string( buffer );
                 };
 
+                // Build model summary pieces
+                std::string modelNames;
+                for ( size_t i = 0; i < models.size(); ++i ) {
+                    if ( i )
+                        modelNames += ", ";
+                    modelNames += models[i].name;
+                }
+
                 std::string epochSummary = "Epoch " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs ) + " (" + std::to_string( percent_complete ) + "%)"
                                            + " | Time: " + format_seconds( epoch_duration.count() ) + " | ETA: " + format_seconds( estimated_remaining_time )
-                                           + " | GPS: " + std::to_string( games_per_second ) + " | " + name1
-                                           + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss1 / game_count : 0.0 ) + " | " + name2
-                                           + " Avg Loss: " + std::to_string( game_count > 0 ? total_loss2 / game_count : 0.0 ) + " | " + name1
-                                           + " Avg Reward: " + std::to_string( epoch_total_reward1 / game_count ) + " | " + name2 + " Avg Reward: "
-                                           + std::to_string( epoch_total_reward2 / game_count ) + " | " + name1 + " Games Won: " + std::to_string( NNAI::m1WinCount )
-                                           + " | " + name2 + " Games Won: " + std::to_string( NNAI::m2WinCount ) + " | Games Played: " + std::to_string( game_count );
+                                           + " | GPS: " + std::to_string( games_per_second ) + " | Models: " + modelNames
+                                           + " | Avg Loss: " + std::to_string( games_played > 0 ? total_loss_all_models / (double)games_played : 0.0 )
+                                           + " | Games Played: " + std::to_string( games_played );
 
                 std::cout << epochSummary << std::endl;
-                log_buffer << epochSummary << std::endl; // New: Write to the stringstream buffer
+                log_buffer << epochSummary << std::endl;
 
+                // Periodic save & flush log
                 if ( ( epoch + 1 ) % 10 == 0 || epoch == num_epochs - 1 ) {
                     std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
                     if ( !log_file ) {
                         std::cerr << "Failed to open training_log.txt for writing. \n";
                     }
                     else {
-                        log_file << log_buffer.str(); // New: Write the entire buffer to the file
-                        log_buffer.str( "" ); // New: Clear the buffer
+                        log_file << log_buffer.str();
+                        log_buffer.str( "" );
                         log_file.close();
                     }
 
-                    NNAI::saveModel( model1, "model_" + name1 + ".pt" );
-                    NNAI::saveModel( model2, "model_" + name2 + ".pt" );
-                    NNAI::saveModel( model3, "model_" + name3 + ".pt" );
+                    // Save each model
+                    for ( auto & me : models ) {
+                        try {
+                            if ( me.model ) {
+                                std::string outname = "qmodel_" + me.name + ".pt";
+                                save_qmodel( *me.model, outname );
+                            }
+                        }
+                        catch ( const std::exception & ex ) {
+                            std::cerr << "Failed to save model " << me.name << ": " << ex.what() << std::endl;
+                        }
+                    }
                 }
-            }
+
+                // Decay epsilon
+                if ( epsilon > EPS_END ) {
+                    epsilon -= EPS_DECAY;
+                    if ( epsilon < EPS_END )
+                        epsilon = EPS_END;
+                }
+            } // epoch loop
         }
         catch ( const fheroes2::InvalidDataResources & ex ) {
             ERROR_LOG( ex.what() )
@@ -597,23 +645,22 @@ int main( int argc, char ** argv )
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
 
-    NNAI::initializeGlobalModels();
     if ( NNAI::isTraining ) {
-        auto model1 = *NNAI::g_model_blue;
-        auto model2 = *NNAI::g_model_red;
+        // auto model1 = *NNAI::g_qmodel_blue;
+        // auto model2 = *NNAI::g_qmodel_red;
 
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 10; // Set the max turns without deaths for the planner
 
-        model1->to( NNAI::device ); // Ensure model is on device
-        model2->to( NNAI::device );
+        // model1->to( NNAI::device ); // Ensure model is on device
+        // model2->to( NNAI::device );
 
         return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 500 );
     }
 
-    NNAI::g_model1 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_blue );
-    NNAI::g_model2 = std::make_shared<NNAI::BattleLSTM>( *NNAI::g_model_red );
+    /*NNAI::g_model1 = std::make_shared<NNAI::QNetworkImpl>( *NNAI::g_qmodel_blue );
+    NNAI::g_model2 = std::make_shared<NNAI::QNetworkImpl>( *NNAI::g_qmodel_red );
     NNAI::g_model1->get()->to( NNAI::device );
-    NNAI::g_model2->get()->to( NNAI::device );
+    NNAI::g_model2->get()->to( NNAI::device );*/
 
     return default_main( argc, argv );
 }

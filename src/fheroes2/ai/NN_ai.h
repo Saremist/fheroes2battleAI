@@ -6,6 +6,10 @@
 #pragma warning( disable : 4996 )
 
 #include <cmath>
+#include <deque>
+#include <memory>
+#include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -19,177 +23,186 @@
 
 namespace NNAI
 {
-    class BattleLSTM;
-
-    const int INPUT_SIZE = 240; // Size of the input feature vector
-    const int HIDDEN_SIZE = 128; // Size of the LSTM hidden state
-    const int LAYER_NUM = 1; // Number of LSTM layers
-
-    extern std::shared_ptr<NNAI::BattleLSTM> g_model1;
-    extern std::shared_ptr<NNAI::BattleLSTM> g_model2;
-    // Global model pointers for each color
-    extern std::shared_ptr<BattleLSTM> g_model_blue;
-    extern std::shared_ptr<BattleLSTM> g_model_green;
-    extern std::shared_ptr<BattleLSTM> g_model_red;
-    extern std::shared_ptr<BattleLSTM> g_model_yellow;
-    extern std::shared_ptr<BattleLSTM> g_model_orange;
-    extern std::shared_ptr<BattleLSTM> g_model_purple;
-
-    extern std::vector<torch::Tensor> g_states1;
-    extern std::vector<std::vector<torch::Tensor>> g_actions1;
-    extern std::vector<torch::Tensor> g_rewards1;
-    extern std::vector<torch::Tensor> g_states2;
-    extern std::vector<std::vector<torch::Tensor>> g_actions2;
-    extern std::vector<torch::Tensor> g_rewards2;
-
-    extern int m1WinCount;
-    extern int m2WinCount;
-
-    extern bool isTraining; // Defines if post battle dialog will open or the training loop will continue
-    extern bool skipDebugLog; // Defines if post battle dialog will open or the training loop will continue
-    extern bool isComparing; // Defines if game is comparing NNAI with Original AI
-
-    extern int prevEnemyHP1, prevAllyHP1, prevEnemyUnits1, prevAllyUnits1;
-    extern int prevEnemyHP2, prevAllyHP2, prevEnemyUnits2, prevAllyUnits2;
-
-    const int HeadCount = 5; // Number of output heads in the model
+    // ---- Configuration constants ----
+    const int INPUT_SIZE = 180; // Size of the input feature vector (state representation)
+    const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
+    const int ACTION_SIZE = 32; // Number of discrete actions (change to your real action count)
+    const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
+    const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
+    const size_t BATCH_SIZE = 64; // Mini-batch size for optimization
+    const double GAMMA = 0.99; // Discount factor
+    const double TAU = 1e-3; // For soft update of target network (if used)
+    const double EPS_START = 1.0; // Initial epsilon for epsilon-greedy
+    const double EPS_END = 0.01; // Minimum epsilon
+    const double EPS_DECAY = 1e-5; // Epsilon decay per step (or use multiplicative decay)
+    const int TRAINING_STEP_UPDATE = 4; // How often to call optimizer (every N steps)
 
     extern torch::Device device;
+    extern torch::Tensor saved_game_state;
+    extern int saved_action;
 
-    struct BattleLSTMImpl : torch::nn::Module
+    // ---- Simple MLP Q-network ----
+    struct QNetworkImpl : torch::nn::Module
     {
-        torch::nn::LSTM lstm_layer{ nullptr };
+        torch::nn::Linear fc1{ nullptr };
+        torch::nn::ModuleList hidden_layers{ nullptr };
+        torch::nn::Linear fc_out{ nullptr };
 
-        // Output heads
-        torch::nn::Linear action_type_head{ nullptr }; // 4 types: SKIP, MOVE, ATTACK, SPELLCAST
-        torch::nn::Linear position_x_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (x coordinate)
-        torch::nn::Linear position_y_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (y coordinate)
-        // torch::nn::Linear direction_head{ nullptr }; // For MOVE, ATTACK, SPELLCAST (y coordinate)
-        torch::nn::Linear destination_x_head{ nullptr }; // For ATTACK (x coordinate)
-        torch::nn::Linear destination_y_head{ nullptr }; // For ATTACK (y coordinate)
-
-        BattleLSTMImpl( int64_t input_size = INPUT_SIZE, int64_t hidden_size = HIDDEN_SIZE, int64_t num_layers = LAYER_NUM )
-            : lstm_layer( torch::nn::LSTMOptions( input_size, hidden_size ).num_layers( num_layers ).batch_first( true ) )
-            , action_type_head( hidden_size, 4 )
-            , position_x_head( hidden_size, 9 )
-            , position_y_head( hidden_size, 11 )
-            //, direction_head( hidden_size, 7 )
-            , destination_x_head( hidden_size, 9 )
-            , destination_y_head( hidden_size, 11 )
+        QNetworkImpl( int64_t input_dim = INPUT_SIZE, int64_t hidden_dim = HIDDEN_SIZE, int64_t output_dim = ACTION_SIZE, int num_hidden = NUM_HIDDEN_LAYERS )
+            : fc1( input_dim, hidden_dim )
+            , hidden_layers( torch::nn::ModuleList() )
+            , fc_out( hidden_dim, output_dim )
         {
-            register_module( "lstm_layer", lstm_layer );
-            register_module( "action_type_head", action_type_head );
-            register_module( "position_x_head", position_x_head );
-            register_module( "position_y_head", position_y_head );
-            // register_module( "direction_head", direction_head );
-            register_module( "destination_x_head", destination_x_head );
-            register_module( "destination_y_head", destination_y_head );
+            register_module( "fc1", fc1 );
 
-            // --- Initialize LSTM ---
-            for ( int layer = 0; layer < num_layers; ++layer ) {
-                torch::NoGradGuard no_grad;
-                for ( auto & param : lstm_layer->named_parameters() ) {
-                    if ( param.key().find( "weight" ) != std::string::npos ) {
-                        if ( param.key().find( "ih" ) != std::string::npos ) {
-                            torch::nn::init::xavier_uniform_( param.value() );
-                        }
-                        else if ( param.key().find( "hh" ) != std::string::npos ) {
-                            torch::nn::init::orthogonal_( param.value() );
-                        }
-                    }
-                    else if ( param.key().find( "bias" ) != std::string::npos ) {
-                        param.value().zero_();
-                        // Forget gate bias to 1.0
-                        int64_t hidden = hidden_size;
-                        param.value().slice( 0, hidden, 2 * hidden ).fill_( 1.0 );
-                    }
+            // Create hidden layers safely inside ModuleList
+            for ( int i = 0; i < num_hidden - 1; ++i ) {
+                auto layer = torch::nn::Linear( hidden_dim, hidden_dim );
+                hidden_layers->push_back( layer );
+            }
+            register_module( "hidden_layers", hidden_layers );
+            register_module( "fc_out", fc_out );
+
+            // Initialize weights
+            torch::nn::init::xavier_uniform_( fc1->weight );
+            torch::nn::init::constant_( fc1->bias, 0 );
+
+            for ( auto & m : *hidden_layers ) {
+                if ( auto linear = std::dynamic_pointer_cast<torch::nn::LinearImpl>( m ) ) {
+                    torch::nn::init::xavier_uniform_( linear->weight );
+                    torch::nn::init::constant_( linear->bias, 0 );
                 }
             }
 
-            // --- Initialize output heads (Xavier) ---
-            torch::nn::init::xavier_uniform_( action_type_head->weight );
-            torch::nn::init::xavier_uniform_( position_x_head->weight );
-            torch::nn::init::xavier_uniform_( position_y_head->weight );
-            // torch::nn::init::xavier_uniform_( direction_head->weight );
-            torch::nn::init::xavier_uniform_( destination_x_head->weight );
-            torch::nn::init::xavier_uniform_( destination_y_head->weight );
-
-            torch::nn::init::constant_( action_type_head->bias, 0 );
-            torch::nn::init::constant_( position_x_head->bias, 0 );
-            torch::nn::init::constant_( position_y_head->bias, 0 );
-            // torch::nn::init::constant_( direction_head->bias, 0 );
-            torch::nn::init::constant_( destination_x_head->bias, 0 );
-            torch::nn::init::constant_( destination_y_head->bias, 0 );
+            torch::nn::init::xavier_uniform_( fc_out->weight );
+            torch::nn::init::constant_( fc_out->bias, 0 );
         }
 
-        std::vector<torch::Tensor> forward( torch::Tensor x )
+        torch::Tensor forward( torch::Tensor x )
         {
-            auto h0 = torch::zeros( { lstm_layer->options.num_layers(), x.size( 0 ), lstm_layer->options.hidden_size() }, x.options() ).to( x.device() );
-            auto c0 = torch::zeros( { lstm_layer->options.num_layers(), x.size( 0 ), lstm_layer->options.hidden_size() }, x.options() ).to( x.device() );
-
-            auto lstm_out = std::get<0>( lstm_layer( x, std::make_tuple( h0, c0 ) ) ).to( x.device() );
-
-            // Take output from last time step
-            auto last_timestep = lstm_out.select( 1, lstm_out.size( 1 ) - 1 ); // Shape: [batch, hidden]
-
-            // Output multiple heads
-            torch::Tensor action_type_logits = action_type_head( last_timestep );
-            torch::Tensor position_x_logits = position_x_head( last_timestep );
-            torch::Tensor position_y_logits = position_y_head( last_timestep );
-            // torch::Tensor direction_logits = direction_head( last_timestep );
-            torch::Tensor destination_x_logits = destination_x_head( last_timestep );
-            torch::Tensor destination_y_logits = destination_y_head( last_timestep );
-
-            // return { action_type_logits, position_x_logits, position_y_logits, direction_logits };
-            return { action_type_logits, position_x_logits, position_y_logits, destination_x_logits, destination_y_logits };
+            x = torch::relu( fc1->forward( x ) );
+            for ( auto & m : *hidden_layers ) {
+                if ( auto linear = std::dynamic_pointer_cast<torch::nn::LinearImpl>( m ) ) {
+                    x = torch::relu( linear->forward( x ) );
+                }
+            }
+            return fc_out->forward( x );
         }
     };
 
-    TORCH_MODULE( BattleLSTM );
+    TORCH_MODULE( QNetwork );
 
-    // Model management
-    void initializeGlobalModels();
-    void createAndSaveModel( const std::string & model_path );
-    std::shared_ptr<BattleLSTM> getModelByColor( int color );
-    void saveModel( const BattleLSTM & model, const std::string & model_path );
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path );
-    // torch::Tensor preprocessInput( const std::vector<float> & raw_data );
-    torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit );
-    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+    // ---- Experience tuple and Replay Buffer ----
+    struct Experience
+    {
+        torch::Tensor state; // shape: [INPUT_SIZE] or [1, INPUT_SIZE]
+        int64_t action; // discrete action index
+        double reward; // scalar
+        torch::Tensor next_state; // shape: [INPUT_SIZE] or [1, INPUT_SIZE]
+        bool done; // terminal flag
+    };
 
-    // Returns two random models and their names.
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels();
+    class ReplayBuffer
+    {
+    public:
+        ReplayBuffer( size_t capacity = REPLAY_BUFFER_CAPACITY );
 
+        void push( const Experience & exp );
+        std::vector<Experience> sample( size_t batch_size );
+        size_t size() const noexcept;
+
+        void clear();
+
+    private:
+        std::deque<Experience> buffer_;
+        size_t capacity_;
+        std::mt19937 rng_;
+    };
+
+    // ---- Per-color models & shared training state ----
+    extern std::shared_ptr<QNetwork> g_qmodel_blue;
+    extern std::shared_ptr<QNetwork> g_qmodel_red;
+
+    // Optionally a target network per color (for stability)
+    extern std::shared_ptr<QNetwork> g_target_blue;
+    extern std::shared_ptr<QNetwork> g_target_red;
+
+    // Single shared replay buffer or per-model buffers (choose one approach)
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red;
+
+    // Training state
+    extern bool isTraining;
+    extern bool skipDebugLog;
+    extern bool isComparing;
+
+    extern double epsilon; // Current epsilon for epsilon-greedy
+    extern int64_t training_steps_done;
+
+    // ---- Utility / API ----
+
+    // Model lifecycle
+    void initialize_qmodels( torch::Device dev = torch::kCPU );
+    void create_and_save_qmodel( const std::string & model_path ); // creates a fresh model and saves to path
+    void save_qmodel( const QNetwork & model, const std::string & model_path );
+    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, const std::string & model_path );
+
+    std::shared_ptr<QNetwork> getQModelByColor( int color );
+
+    // Epsilon-greedy action selection
+    // state_tensor must be a 1D tensor shape [INPUT_SIZE] or 2D [1,INPUT_SIZE]
+    int selectActionEpsilonGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor );
+
+    // Deterministic choice (argmax)
+    int selectActionGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor );
+
+    // Convert arena & unit -> state tensor
+    torch::Tensor prepareStateTensor( const Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    // Convert an action index back to in-game Actions / Command
+    Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    // Add experience to replay buffer
+
+    // Optimize the model with a batch sampled from replay buffer
+    // optimizer provided externally to keep flexibility
+    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
+                         torch::Device device, float & out_loss );
+
+    // Soft update target network parameters: target = tau*local + (1-tau)*target
+    void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau );
+
+    bool isNNControlled( int color );
+    int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
-    int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
+    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color );
 
-    bool isNNControlled( int color ); // TODO MW
+    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
-                        const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
-                        float & epoch_total_reward, torch::Device device, int model_id );
-    void resetGameRewardStats( Battle::Arena & arena );
-
-    inline std::pair<int, int> getXYCoordinates( const Battle::Unit & unit )
-    {
-        // ( unit.GetHeadIndex() / Board::widthInCells ) + 1 ) + ", " + std::to_string( ( unit.GetHeadIndex() % Board::widthInCells ) + 1 )
-        int x = ( unit.GetHeadIndex() / Battle::Board::widthInCells );
-        int y = ( unit.GetHeadIndex() % Battle::Board::widthInCells );
-        return { x, y };
-    }
-
+    // Quick helpers
     inline int getIndexFromXY( int x, int y )
     {
         return ( x * Battle::Board::widthInCells ) + y;
     }
 
+    inline std::pair<int, int> getXYCoordinates( const Battle::Unit & unit )
+    {
+        int x = ( unit.GetHeadIndex() / Battle::Board::widthInCells );
+        int y = ( unit.GetHeadIndex() % Battle::Board::widthInCells );
+        return { x, y };
+    }
+
     inline float normalize( float value, float min, float max )
     {
+        if ( max == min )
+            return 0.0f;
         return ( static_cast<float>( value ) - static_cast<float>( min ) ) / ( static_cast<float>( max ) - static_cast<float>( min ) );
     }
-} // NNAI
 
+} // namespace NNAI
+
+// Non-member helpers (battle-related)
 void PrintUnitInfo( const Battle::Unit & unit );
 
 namespace Battle
@@ -197,7 +210,7 @@ namespace Battle
     const char * CommandTypeToString( CommandType type );
     std::ostream & operator<<( std::ostream & os, const Command & command );
     std::ostream & operator<<( std::ostream & os, const Actions & actions );
-    float calculateReward( const Battle::Arena & currArena, int color );
+    float calculateReward( const torch::Tensor & prev_state, const torch::Tensor & curr_state, int color );
 }
 
 #endif // FHEROES2_AI_NN_AI_H

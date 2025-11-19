@@ -1,422 +1,287 @@
-#include "NN_ai.h"
+﻿#include "NN_ai.h"
 
 #pragma warning( disable : 4996 )
 
+#include <algorithm>
+#include <deque>
 #include <filesystem>
 #include <iostream>
+#include <random>
+#include <tuple>
 
 #include <torch/torch.h>
 
 #include "battle.h"
-#include "battle_command.h"
-// #include "battle_action.h"
-#include <algorithm> // For std::reverse
-#include <random>
-#include <tuple>
-#include <vector>
-
 #include "battle_arena.h"
 #include "battle_army.h"
+#include "battle_command.h"
 #include "game.h"
 #include "ui_tool.h"
 
 namespace NNAI
 {
-    std::shared_ptr<BattleLSTM> g_model1 = nullptr;
-    std::shared_ptr<BattleLSTM> g_model2 = nullptr;
-    // Global model pointers for each color
-    std::shared_ptr<BattleLSTM> g_model_blue = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_green = nullptr;
-    std::shared_ptr<BattleLSTM> g_model_red = nullptr;
+    // --- Global Q-networks (one per color) ---
+    std::shared_ptr<QNetwork> g_qmodel_blue = nullptr;
+    std::shared_ptr<QNetwork> g_qmodel_red = nullptr;
 
-    std::vector<torch::Tensor> g_states1;
-    std::vector<std::vector<torch::Tensor>> g_actions1( HeadCount );
-    std::vector<torch::Tensor> g_rewards1;
-    std::vector<torch::Tensor> g_states2;
-    std::vector<std::vector<torch::Tensor>> g_actions2( HeadCount );
-    std::vector<torch::Tensor> g_rewards2;
+    std::shared_ptr<QNetwork> g_target_blue = nullptr;
+    std::shared_ptr<QNetwork> g_target_red = nullptr;
 
-    bool isTraining = true; // Defines if post battle dialog will open or the training loop will continue
-    bool skipDebugLog = true; // Defines if post battle dialog will open or the training loop will continue
-    bool isComparing = true; // Defines if game is comparing NNAI with Original AI
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
 
-    int m1WinCount = 0;
-    int m2WinCount = 0;
+    bool isTraining = true;
+    bool skipDebugLog = true;
+    bool isComparing = true;
+
+    torch::Tensor saved_game_state = torch::Tensor();
+    int saved_action = 0;
+
+    double epsilon = EPS_START;
+    int64_t training_steps_done = 0;
 
     torch::Device device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
-    // Previous state tracking for reward calculation
-    int prevEnemyHP1 = -1, prevAllyHP1 = -1, prevEnemyUnits1 = -1, prevAllyUnits1 = -1;
-    int prevEnemyHP2 = -1, prevAllyHP2 = -1, prevEnemyUnits2 = -1, prevAllyUnits2 = -1;
+    // --- ReplayBuffer implementation ---
+    ReplayBuffer::ReplayBuffer( size_t capacity )
+        : capacity_( capacity )
+        , rng_( std::random_device{}() )
+    {}
 
-    void initializeGlobalModels()
+    void ReplayBuffer::push( const Experience & exp )
     {
-        loadModel( NNAI::g_model_blue, "model_blue.pt" );
-        loadModel( NNAI::g_model_green, "model_green.pt" );
-        loadModel( NNAI::g_model_red, "model_red.pt" );
+        if ( buffer_.size() >= capacity_ )
+            buffer_.pop_front();
+        buffer_.push_back( exp );
     }
 
-    void createAndSaveModel( const std::string & model_path )
+    std::vector<Experience> ReplayBuffer::sample( size_t batch_size )
     {
-        int64_t input_size = INPUT_SIZE, hidden_size = HIDDEN_SIZE, num_layers = LAYER_NUM;
+        std::vector<Experience> batch;
+        batch.reserve( batch_size );
 
+        if ( batch_size == 0 || buffer_.empty() )
+            return batch;
+
+        std::uniform_int_distribution<size_t> dist( 0, buffer_.size() - 1 );
+        for ( size_t i = 0; i < batch_size; ++i ) {
+            batch.push_back( buffer_[dist( rng_ )] );
+        }
+        return batch;
+    }
+
+    size_t ReplayBuffer::size() const noexcept
+    {
+        return buffer_.size();
+    }
+
+    void ReplayBuffer::clear()
+    {
+        buffer_.clear();
+    }
+
+    // --- Model lifecycle helpers ---
+    void create_and_save_qmodel( const std::string & model_path )
+    {
         try {
-            BattleLSTM model( input_size, hidden_size, num_layers );
+            QNetwork model( INPUT_SIZE, HIDDEN_SIZE, ACTION_SIZE, NUM_HIDDEN_LAYERS );
+            model->to( device );
+            namespace fs = std::filesystem;
+            // fs::create_directories( fs::path( model_path ).parent_path() );
             torch::save( model, model_path );
+            if ( !skipDebugLog )
+                std::cout << "Created and saved new Q-model to " << model_path << std::endl;
         }
         catch ( const std::exception & e ) {
-            std::cerr << "Error creating or saving the model: " << e.what() << std::endl;
+            std::cerr << "Error creating or saving Q-model: " << e.what() << std::endl;
         }
     }
 
-    void saveModel( const BattleLSTM & model, const std::string & model_path )
+    void save_qmodel( const QNetwork & model, const std::string & model_path )
     {
         try {
             torch::save( model, model_path );
-            std::cout << "Model saved to " << model_path << std::endl;
+            if ( !skipDebugLog )
+                std::cout << "Q-model saved to " << model_path << std::endl;
         }
         catch ( const std::exception & e ) {
-            std::cerr << "Error saving the model: " << e.what() << std::endl;
+            std::cerr << "Error saving Q-model: " << e.what() << std::endl;
         }
     }
 
-    void loadModel( std::shared_ptr<BattleLSTM> & modelPtr, const std::string & model_path )
+    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, const std::string & model_path )
     {
         namespace fs = std::filesystem;
         try {
             if ( !fs::exists( model_path ) ) {
-                std::cerr << "Model file does not exist at " << model_path << ". Creating new model..." << std::endl;
-                createAndSaveModel( model_path );
+                if ( !skipDebugLog )
+                    std::cerr << "Q-model file does not exist at " << model_path << ". Creating default model..." << std::endl;
+                create_and_save_qmodel( model_path );
             }
-            modelPtr = std::make_shared<BattleLSTM>();
+            modelPtr = std::make_shared<QNetwork>( INPUT_SIZE, HIDDEN_SIZE, ACTION_SIZE, NUM_HIDDEN_LAYERS );
             torch::load( *modelPtr, model_path );
-            modelPtr->get()->to( device ); // Move model to device after loading
-            std::cout << "Model loaded from " << model_path << std::endl;
+            modelPtr->get()->to( device );
+            if ( !skipDebugLog )
+                std::cout << "Loaded Q-model from " << model_path << std::endl;
         }
         catch ( const std::exception & e ) {
-            std::cerr << "Error loading the model: " << e.what() << std::endl;
+            std::cerr << "Error loading Q-model: " << e.what() << std::endl;
             modelPtr = nullptr;
         }
     }
 
-    std::shared_ptr<BattleLSTM> getModelByColor( int color )
+    // Initialize global models and replay buffer
+    void initialize_qmodels( torch::Device dev )
+    {
+        device = dev;
+        g_replay_buffer_blue = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_red = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+
+        load_qmodel( g_qmodel_blue, "qmodel_blue.pt" );
+        load_qmodel( g_qmodel_red, "qmodel_red.pt" );
+
+        if ( g_qmodel_blue ) {
+            g_target_blue = std::make_shared<QNetwork>( *g_qmodel_blue );
+            g_target_blue->get()->to( device );
+        }
+        if ( g_qmodel_red ) {
+            g_target_red = std::make_shared<QNetwork>( *g_qmodel_red );
+            g_target_red->get()->to( device );
+        }
+    }
+
+    // --- Action selection ---
+    int selectActionGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor )
+    {
+        if ( !model )
+            return 0;
+        // Ensure shape [1, INPUT_SIZE]
+        if ( state_tensor.dim() == 1 )
+            state_tensor = state_tensor.unsqueeze( 0 );
+        state_tensor = state_tensor.to( device ).to( torch::kFloat32 );
+
+        model->get()->eval();
+        torch::NoGradGuard no_grad;
+        auto qvals = model->get()->forward( state_tensor ); // shape [1, ACTION_SIZE]
+        auto action = std::get<1>( qvals.max( 1 ) ).item<int64_t>();
+        return static_cast<int>( action );
+    }
+
+    int selectActionEpsilonGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor )
+    {
+        // epsilon-greedy using global epsilon
+        std::uniform_real_distribution<double> dist( 0.0, 1.0 );
+        static std::mt19937 rng( std::random_device{}() );
+        double sample = dist( rng );
+        if ( sample < epsilon || !model ) {
+            // random action
+            std::uniform_int_distribution<int> a_dist( 0, ACTION_SIZE - 1 );
+            return a_dist( rng );
+        }
+        else {
+            return selectActionGreedy( model, state_tensor );
+        }
+    }
+
+    std::shared_ptr<QNetwork> getQModelByColor( int color )
     {
         switch ( color ) {
         case 0x01: // BLUE
-            return g_model1;
+            return g_qmodel_blue;
         case 0x04: // RED
-            return g_model2;
+            return g_qmodel_red;
         default:
             std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
             return nullptr;
         }
     }
 
-    bool isNNControlled( int color )
+    // --- State preprocessing ---
+    // Re-use and adapt the old feature extraction but produce a flat tensor of length INPUT_SIZE
+    std::vector<float> extractUnitFeaturesVec( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
-        if ( isComparing ) {
-            switch ( color ) {
-            case 0x01: // BLUE
-                return true;
-            case 0x04: // RED
-                return false;
-            }
-        }
-        return true; // TODO Placeholder for actual logic to determine if the AI is controlled by NN
-    }
-
-    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
-    {
-        if ( currentUnit.Modes( Battle::TR_MOVED ) ) {
-            return {};
-        }
-
-        BattleLSTM & model = *getModelByColor( currentUnit.GetColor() );
-
-        if ( !model ) {
-            std::cerr << "Error: Neural network model is not initialized!" << std::endl;
-            return {};
-        }
-
-        torch::Tensor input = prepareBattleLSTMInput( arena, currentUnit );
-        if ( currentUnit.GetCount() == 0 ) {
-            return {};
-        }
-
-        const uint8_t color = static_cast<uint8_t>( currentUnit.GetColor() );
-
-        torch::Tensor squeezed_input = input.squeeze( 0 );
-
-        std::vector<torch::Tensor> nn_output;
-
-        if ( color == 0x01 ) { // BLUE team
-            NNAI::g_states1.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states1.size() > 10 ? NNAI::g_states1.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states1.begin() + start_idx, NNAI::g_states1.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
-        }
-
-        else if ( color == 0x04 ) { // RED team
-            NNAI::g_states2.push_back( squeezed_input.to( NNAI::device ) );
-
-            // Select the last 10 entries (or fewer if less than 10)
-            size_t start_idx = NNAI::g_states2.size() > 10 ? NNAI::g_states2.size() - 10 : 0;
-            std::vector<torch::Tensor> last_entries( NNAI::g_states2.begin() + start_idx, NNAI::g_states2.end() );
-
-            // Stack only the last 10 steps
-            torch::Tensor stacked = torch::stack( last_entries, 1 );
-            // std::cout << stacked << std::endl; // DEBUG
-            nn_output = model->forward( stacked );
-        }
-        else {
-            std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
-        }
-
-        std::vector<int64_t> nn_outputs;
-        for ( const auto & head_output : nn_output ) {
-            auto probs = torch::nn::functional::softmax( head_output, /*dim=*/1 );
-            probs = probs.nan_to_num( 0.0, 0.0, 0.0 );
-
-            if ( !probs.isfinite().all().item<bool>() || probs.min().item<float>() < 0 ) {
-                std::cerr << "Invalid probabilities detected, SKIPPING." << std::endl;
-                return {};
-            }
-
-            auto sampled = probs.multinomial( /*num_samples=*/1 );
-            nn_outputs.push_back( sampled.item<int64_t>() );
-        }
-
-        if ( NNAI::isTraining ) {
-            std::vector<torch::Tensor> head_actions;
-            for ( int64_t val : nn_outputs ) {
-                head_actions.push_back( torch::tensor( val, torch::TensorOptions().dtype( torch::kLong ).device( NNAI::device ) ) );
-            }
-
-            if ( head_actions.size() != HeadCount ) {
-                std::cerr << "Warning: Expected " << HeadCount << " heads, got " << head_actions.size() << std::endl;
-                return {};
-            }
-
-            if ( color == 0x01 ) { // BLUE team
-                for ( size_t h = 0; h < HeadCount; ++h ) {
-                    NNAI::g_actions1[h].push_back( head_actions[h].clone().detach().contiguous().to( NNAI::device ).to( torch::kLong ) );
-                }
-            }
-            else if ( color == 0x04 ) { // RED team
-                for ( size_t h = 0; h < HeadCount; ++h ) {
-                    NNAI::g_actions2[h].push_back( head_actions[h].clone().detach().contiguous().to( NNAI::device ).to( torch::kLong ) );
-                }
-            }
-            else {
-                std::cerr << "Warning: Unrecognized color " << static_cast<int>( color ) << ". Skipping unit." << std::endl;
-            }
-        }
-
-        Battle::Actions actions;
-
-        int actionType = static_cast<int>( nn_outputs[0] );
-        int positionNumX = static_cast<int>( nn_outputs[1] );
-        int positionNumY = static_cast<int>( nn_outputs[2] );
-        // int directionOutput = static_cast<int>( nn_outputs[3] );
-
-        int attackTargetPositionX = static_cast<int>( nn_outputs[3] );
-        int attackTargetPositionY = static_cast<int>( nn_outputs[4] );
-
-        // Use the coordinates to get the board index
-        int positionNum = getIndexFromXY( positionNumX, positionNumY );
-
-        int attackTargetPosition = getIndexFromXY( attackTargetPositionX, attackTargetPositionY );
-        int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
-
-        // int attackDirection = ( directionOutput >= 6 ? -1 : 1 << directionOutput );
-        // int attackTargetPositon = Battle::Board::GetIndexDirection( positionNum, attackDirection );
-
-        int currentUnitUID = static_cast<int>( currentUnit.GetUID() );
-
-        // Check if the chosen move position is the same as the current position.
-        // If so, and the action is MOVE, it's essentially a SKIP.
-        if ( actionType == 0 && positionNum == currentUnit.GetPosition().GetHead()->GetIndex() ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Selected MOVE to the current position. Changing to SKIP." << std::endl;
-            actionType = 3;
-        }
-
-        // Process SPELLCAST as ATTACK
-        if ( actionType == 2 ) {
-            actionType = 1;
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Spellcasting is not implemented, treating as ATTACK." << std::endl;
-        }
-
-        int targetUnitUID = -1;
-        const auto * targetCell = arena.GetBoard()->GetCell( attackTargetPosition );
-        if ( targetCell ) {
-            const auto * unit = targetCell->GetUnit();
-            if ( unit ) {
-                targetUnitUID = unit->GetUID();
-            }
-        }
-
-        // Handle archery attacks
-        if ( currentUnit.GetShots() > 0 ) {
-            attackDirection = -1; // -1 indicates archery attack
-            positionNum = -1; // No move needed for archery attack
-        }
-
-        // If unit wants to attack a non-existent unit, check if it's a valid move.
-        if ( actionType == 1 && targetUnitUID == -1 ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Attempting to ATTACK a non-existent unit. Changing to MOVE." << std::endl;
-            actionType = 0;
-        }
-
-        // Final validation of actions
-        if ( actionType == 1
-             && !CheckAttackParameters( &currentUnit, targetCell ? targetCell->GetUnit() : nullptr, positionNum, attackTargetPosition, attackDirection ) ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Illegal ATTACK action. Changing to MOVE." << std::endl;
-            actionType = 0;
-        }
-
-        if ( actionType == 0 && !CheckMoveParameters( &currentUnit, positionNum ) ) {
-            if ( !NNAI::skipDebugLog )
-                std::cout << "Illegal MOVE action. Defaulting to SKIP." << std::endl;
-            actionType = 3;
-        }
-
-        if ( !NNAI::skipDebugLog ) {
-            std::cout << "\nFinal Action Selection:" << std::endl;
-            std::cout << "Action Type: " << actionType << ", Move Position Index: " << positionNum << ", Attack Direction: " << attackDirection
-                      << ", Current Unit UID: " << currentUnitUID << ", Target Unit UID: " << targetUnitUID << ", Attack Target Position Index: " << attackTargetPosition
-                      << std::endl;
-        }
-
-        switch ( actionType ) {
-        case 0:
-            actions.emplace_back( Battle::Command::MOVE, currentUnitUID, positionNum );
-            break;
-        case 1:
-            actions.emplace_back( Battle::Command::ATTACK, currentUnitUID, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
-            break;
-        case 3:
-        default:
-            actions.emplace_back( Battle::Command::SKIP, currentUnitUID );
-            break;
-        }
-
-        return actions;
-    }
-
-    // Extract features for a single unit
-    std::vector<float> extractUnitFeatures( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
-    {
+        // Same features as before
         std::vector<float> features;
         std::pair<int, int> coords = getXYCoordinates( unit );
 
-        features.push_back( static_cast<float>( unit.GetUID() ) ); // Unique ID
-        features.push_back( normalize( static_cast<float>( coords.first ), 0, 9 ) ); // Position X (normalized by battlefield size)
-        features.push_back( normalize( static_cast<float>( coords.second ), 0, 11 ) ); // Position Y (normalized by battlefield size)
-        features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) ); // Normalize Count
-        features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) ); // Normalize HP
-        features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) ); // Normalize speed
-        features.push_back( normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ), 0,
-                                       50 ) ); // Distance to current unit
-        features.push_back( normalize( static_cast<float>( unit.GetAttack() ), 0, 100 ) ); // Normalize attack
-        features.push_back( normalize( static_cast<float>( unit.GetDefense() ), 0, 100 ) ); // Normalize defense
-        features.push_back( unit.isFlying() ? 1.0f : 0.0f ); // Is flying
-        features.push_back( unit.isArchers() ? 1.0f : 0.0f ); // Is archer
-        features.push_back( normalize( static_cast<float>( unit.GetShots() ), 0, 50 ) ); // Normalize shots left
-        features.push_back( unit.isHandFighting() ? 1.0f : 0.0f ); // Is hand fighting
-        features.push_back( unit.isWide() ? 1.0f : 0.0f ); // Is wide
-        features.push_back( unit.isAffectedByMorale() ? 1.0f : 0.0f ); // Affected by morale
-        features.push_back( unit.isImmovable() ? 1.0f : 0.0f ); // Is immovable
-        features.push_back( normalize( static_cast<float>( unit.GetMorale() ), 0, 100 ) ); // Morale
-        features.push_back( normalize( static_cast<float>( unit.GetLuck() ), 0, 100 ) ); // Luck
-        features.push_back( static_cast<float>( unit.GetColor() ) ); // Ally or enemy color
-
-        currentunit.GetColor() == unit.GetColor() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Is current unit ally or foe
-        unit.GetColor() == arena.GetArmy1Color() ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Left or right
-        unit.Modes( Battle::TR_MOVED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Moved this turn
-        unit.Modes( Battle::TR_RESPONDED ) ? features.push_back( 1.0f ) : features.push_back( 0.0f ); // Responded this turn
-        arena.GetBoard()->CanAttackTargetFromPosition( currentunit, unit, arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) )
-            ? features.push_back( 1.0f )
-            : features.push_back( 0.0f ); // Can attack target from position
+        features.push_back( static_cast<float>( unit.GetUID() ) );
+        features.push_back( normalize( static_cast<float>( coords.first ), 0, 9 ) );
+        features.push_back( normalize( static_cast<float>( coords.second ), 0, 11 ) );
+        features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) );
+        features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) );
+        features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) );
+        features.push_back( normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ), 0, 50 ) );
+        features.push_back( normalize( static_cast<float>( unit.GetAttack() ), 0, 100 ) );
+        features.push_back( normalize( static_cast<float>( unit.GetDefense() ), 0, 100 ) );
+        features.push_back( unit.isFlying() ? 1.0f : 0.0f );
+        features.push_back( unit.isArchers() ? 1.0f : 0.0f );
+        features.push_back( normalize( static_cast<float>( unit.GetShots() ), 0, 50 ) );
+        features.push_back( unit.isHandFighting() ? 1.0f : 0.0f );
+        features.push_back( currentunit.GetColor() == unit.GetColor() ? 1.0f : 0.0f );
+        features.push_back( unit.GetColor() == arena.GetArmy1Color() ? 1.0f : 0.0f );
+        features.push_back( unit.Modes( Battle::TR_MOVED ) ? 1.0f : 0.0f );
+        features.push_back( unit.Modes( Battle::TR_RESPONDED ) ? 1.0f : 0.0f );
+        features.push_back(
+            arena.GetBoard()->CanAttackTargetFromPosition( currentunit, unit, arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ) ? 1.0f
+                                                                                                                                                               : 0.0f );
 
         return features;
     }
 
-    torch::Tensor prepareBattleLSTMInput( const Battle::Arena & arena, const Battle::Unit & currentUnit )
+    torch::Tensor prepareStateTensor( const Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        // Get all units for both sides
         const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
         const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
 
-        // Prepare feature vectors
-        std::vector<std::vector<float>> featuresList;
+        std::vector<std::vector<float>> featList;
 
-        // 1. Current unit (always first)
-        featuresList.push_back( extractUnitFeatures( currentUnit, arena, currentUnit ) );
+        // Current unit
+        featList.push_back( extractUnitFeaturesVec( currentUnit, arena, currentUnit ) );
 
-        // 2. Up to 4 other allies (excluding current unit)
+        // Allies up to 4
         int allyCount = 0;
-        for ( const Battle::Unit * unit : allies ) {
-            if ( unit && unit->isValid() && unit != &currentUnit ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
-                ++allyCount;
-                if ( allyCount == 4 )
+        for ( const Battle::Unit * u : allies ) {
+            if ( u && u->isValid() && u != &currentUnit ) {
+                featList.push_back( extractUnitFeaturesVec( *u, arena, currentUnit ) );
+                if ( ++allyCount == 4 )
                     break;
             }
         }
-        // Pad with zeros if less than 4 allies
-        if ( !featuresList.empty() ) {
-            const int featureSize = static_cast<int>( featuresList[0].size() );
-            while ( allyCount < 4 ) {
-                featuresList.push_back( std::vector<float>( featureSize, 0.0f ) );
-                ++allyCount;
-            }
+        while ( allyCount < 4 ) {
+            featList.push_back( std::vector<float>( featList[0].size(), 0.0f ) );
+            ++allyCount;
         }
 
-        // 3. Up to 5 enemies
+        // Enemies up to 5
         int enemyCount = 0;
-        for ( const Battle::Unit * unit : enemies ) {
-            if ( unit && unit->isValid() ) {
-                featuresList.push_back( extractUnitFeatures( *unit, arena, currentUnit ) );
-                ++enemyCount;
-                if ( enemyCount == 5 )
+        for ( const Battle::Unit * u : enemies ) {
+            if ( u && u->isValid() ) {
+                featList.push_back( extractUnitFeaturesVec( *u, arena, currentUnit ) );
+                if ( ++enemyCount == 5 )
                     break;
             }
         }
-        // Pad with zeros if less than 5 enemies
-        if ( !featuresList.empty() ) {
-            const int featureSize = static_cast<int>( featuresList[0].size() );
-            while ( enemyCount < 5 ) {
-                featuresList.push_back( std::vector<float>( featureSize, 0.0f ) );
-                ++enemyCount;
-            }
+        while ( enemyCount < 5 ) {
+            featList.push_back( std::vector<float>( featList[0].size(), 0.0f ) );
+            ++enemyCount;
         }
 
-        // Convert to torch tensor: [1, seq_len, input_size]
-        if ( featuresList.empty() )
-            return torch::empty( { 1, 0, 0 }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
-
-        const int seq_len = static_cast<int>( featuresList.size() );
-        const int input_size = static_cast<int>( featuresList[0].size() );
-
-        torch::Tensor input = torch::zeros( { 1, seq_len, input_size }, torch::TensorOptions().dtype( torch::kFloat32 ).device( NNAI::device ) );
-        for ( int i = 0; i < seq_len; ++i ) {
-            for ( int j = 0; j < input_size; ++j ) {
-                input[0][i][j] = featuresList[i][j];
-            }
+        // Flatten
+        std::vector<float> flat;
+        for ( auto & vec : featList ) {
+            flat.insert( flat.end(), vec.begin(), vec.end() );
         }
 
-        input = input.view( { 1, 1, seq_len * input_size } );
-        return input;
+        // Pad/truncate to INPUT_SIZE
+        if ( flat.size() < static_cast<size_t>( INPUT_SIZE ) ) {
+            flat.resize( INPUT_SIZE, 0.0f );
+        }
+        else if ( flat.size() > static_cast<size_t>( INPUT_SIZE ) ) {
+            flat.resize( INPUT_SIZE );
+        }
+
+        torch::Tensor t = torch::from_blob( flat.data(), { INPUT_SIZE }, torch::kFloat32 ).clone().to( device );
+        return t; // shape [INPUT_SIZE]
     }
 
     void trainingGameLoop( bool /*isFirstGameRun*/, bool /*isProbablyDemoVersion*/ )
@@ -452,117 +317,195 @@ namespace NNAI
             }
         }
     }
-    std::tuple<BattleLSTM &, std::string, BattleLSTM &, std::string, BattleLSTM &, std::string> SelectRandomModels()
+
+    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        // Pair each model pointer with its name
-        std::vector<std::pair<std::shared_ptr<BattleLSTM>, std::string>> models
-            = { { g_model_blue, "blue" },     { g_model_green, "green" },   { g_model_red, "red" }/*,
-                { g_model_yellow, "yellow" }, { g_model_orange, "orange" }, { g_model_purple, "purple" }*/ };
-
-        // Remove nullptrs
-        models.erase( std::remove_if( models.begin(), models.end(), []( const auto & m ) { return !m.first; } ), models.end() );
-
-        if ( models.size() < 2 ) {
-            throw std::runtime_error( "Not enough models to select two random ones." );
+        // If the unit already moved this turn, do nothing
+        if ( currentUnit.Modes( Battle::TR_MOVED ) ) {
+            return {};
         }
 
-        std::random_device rd;
-        std::mt19937 gen( rd() );
-        std::uniform_int_distribution<> dis( 0, static_cast<int>( models.size() ) - 1 );
+        // Choose model by color
+        std::shared_ptr<QNetwork> model = getQModelByColor( currentUnit.GetColor() );
 
-        int idx1 = dis( gen );
-        int idx2;
-        do {
-            idx2 = dis( gen );
-        } while ( idx2 == idx1 );
+        // If no NN model available, fallback to SKIP to avoid crashes.
+        if ( !model ) {
+            if ( !skipDebugLog ) {
+                std::cerr << "planUnitTurn: no Q-model for color " << currentUnit.GetColor() << " — SKIP\n";
+            }
+            Battle::Actions actions;
+            actions.emplace_back( Battle::Command::SKIP, static_cast<int>( currentUnit.GetUID() ) );
+            std::cout << "FORCING SKIP ERRORR!!!" << std::endl;
+            return actions;
+        }
 
-        int idx3;
-        do {
-            idx3 = dis( gen );
-        } while ( idx3 == idx1 || idx3 == idx2 );
+        // Prepare state tensor for the current unit
+        torch::Tensor state = prepareStateTensor( arena, currentUnit ); // shape [INPUT_SIZE]
+        NNAI::saved_game_state = state;
 
-        return std::tie( *models[idx1].first, models[idx1].second, *models[idx2].first, models[idx2].second, *models[idx3].first, models[idx3].second );
+        // Select action (epsilon-greedy). This function handles device/shape internally.
+        int action_index = selectActionEpsilonGreedy( model, state );
+
+        // Map discrete action index back to in-game actions
+        Battle::Actions actions = actionIndexToGameActions( action_index, arena, currentUnit );
+
+        // Optional debug output
+        if ( !skipDebugLog ) {
+            std::cout << "planUnitTurn: color=" << static_cast<int>( currentUnit.GetColor() ) << " uid=" << currentUnit.GetUID() << " action_index=" << action_index
+                      << " -> " << actions << std::endl;
+        }
+
+        NNAI::saved_action = action_index;
+
+        return actions;
     }
 
-    void tryTrainModel( BattleLSTM & model, torch::optim::Optimizer & optimizer, const std::vector<torch::Tensor> & states,
-                        const std::vector<std::vector<torch::Tensor>> & actions, const std::vector<torch::Tensor> & rewards, float & total_loss,
-                        float & epoch_total_reward, torch::Device device, int model_id )
+    // --- Memory API ---
+    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color )
     {
-        if ( states.empty() || rewards.empty() || actions.empty() ) {
-            std::cout << "states: " << states.size() << " rewards: " << rewards.size() << " actions: " << actions.size()
-                      << " actions[0]: " << ( actions.empty() ? 0 : actions[0].size() ) << "\n";
-            std::cout << "Empty states, rewards, or actions. Skipping training for model " << model_id << "\n";
+        if ( !g_replay_buffer_blue || !g_replay_buffer_red )
             return;
+        Experience e;
+        e.state = state.detach().to( torch::kCPU );
+        e.action = action;
+        e.reward = reward;
+        e.next_state = next_state.detach().to( torch::kCPU );
+        e.done = done;
+        if ( color == 0x01 ) // BLUE
+            g_replay_buffer_blue->push( e );
+        else if ( color == 0x04 ) // RED
+            g_replay_buffer_red->push( e );
+    }
+
+    // --- Optimization step ---
+    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
+                         torch::Device device, float & out_loss )
+    {
+        if ( !replay_buffer )
+            return;
+        if ( replay_buffer->size() < batch_size )
+            return;
+
+        auto batch = replay_buffer->sample( batch_size );
+        if ( batch.empty() )
+            return;
+
+        std::vector<torch::Tensor> states, next_states;
+        std::vector<int64_t> actions;
+        std::vector<float> rewards;
+        std::vector<uint8_t> dones;
+
+        for ( const auto & e : batch ) {
+            states.push_back( e.state.to( device ) );
+            next_states.push_back( e.next_state.to( device ) );
+            actions.push_back( e.action );
+            rewards.push_back( static_cast<float>( e.reward ) );
+            dones.push_back( e.done ? 1u : 0u );
         }
 
-        // === Stack states, actions, rewards into tensors ===
-        torch::Tensor state_batch = torch::stack( states ).to( device );
-        torch::Tensor reward_batch = torch::stack( rewards ).to( device ).to( torch::kFloat ).view( { -1 } );
+        auto state_batch = torch::stack( states ); // [B, INPUT_SIZE]
+        auto next_state_batch = torch::stack( next_states ); // [B, INPUT_SIZE]
+        auto action_batch = torch::tensor( actions, torch::TensorOptions().dtype( torch::kLong ).device( device ) ); // [B]
+        auto reward_batch = torch::tensor( rewards, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) ); // [B]
+        auto done_batch = torch::tensor( dones, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) ); // [B]
 
-        std::vector<torch::Tensor> action_batches;
-        action_batches.reserve( actions.size() );
-        for ( size_t h = 0; h < actions.size(); ++h ) {
-            TORCH_CHECK( !actions[h].empty(), "actions[", h, "] is empty" );
-            auto ab = torch::stack( actions[h] ).to( device, torch::kLong );
-            action_batches.push_back( ab );
-        }
-
+        model->train();
         optimizer.zero_grad();
 
-        // === Forward pass ===
-        auto logits = model->forward( state_batch ); // vector< Tensor >, one per head
+        // Current Q-values
+        auto q_values_all = model->forward( state_batch ); // [B, ACTION_SIZE]
+        auto q_values = q_values_all.gather( 1, action_batch.unsqueeze( 1 ) ).squeeze( 1 ); // [B]
 
-        // === Compute discounted returns ===
-        const float gamma = 0.99f;
-        std::vector<float> discounted( reward_batch.size( 0 ) );
-        float running_return = 0.0f;
-        for ( int64_t t = reward_batch.size( 0 ) - 1; t >= 0; --t ) {
-            running_return = reward_batch[t].item<float>() + gamma * running_return;
-            discounted[t] = running_return;
-        }
-        auto returns = torch::tensor( discounted, reward_batch.options() );
+        // compute max of next state's Q-values (bootstrap)
+        auto next_q_values_all = model->forward( next_state_batch ); // [B, ACTION_SIZE]
+        auto next_max_q = std::get<0>( next_q_values_all.max( 1 ) ); // [B]
 
-        // === Scale by known maximum reward (1100) ===
-        const float max_reward = 1100.0f;
-        returns = returns / max_reward; // keeps values in ~[0,1]
+        auto expected_q = reward_batch + ( 1.0 - done_batch ) * static_cast<float>( gamma ) * next_max_q;
+        // MSE loss
+        auto loss = torch::nn::functional::mse_loss( q_values, expected_q.detach() );
 
-        // === Normalize returns (zero mean, unit std) ===
-        auto mean = returns.mean().detach();
-        auto std = returns.std( /*unbiased=*/false ).detach();
-        auto norm_rewards = ( returns - mean ) / ( std + 1e-6f );
-
-        // === Loss computation ===
-        torch::Tensor loss = torch::zeros( {}, torch::TensorOptions().dtype( torch::kFloat32 ).device( device ) );
-        const float entropy_coef = 0.05f; // stronger entropy
-
-        for ( size_t h = 0; h < logits.size(); ++h ) {
-            auto log_prob = torch::nn::functional::log_softmax( logits[h], /*dim=*/1 );
-            auto idx = action_batches[h].unsqueeze( 1 ); // [B,1]
-            auto selected_log_prob = log_prob
-                                         .gather( 1, idx ) // pick chosen actions
-                                         .squeeze( 1 ); // [B]
-
-            // Entropy regularization
-            auto prob = torch::exp( log_prob );
-            auto entropy = -( prob * log_prob ).sum( 1 ).mean();
-
-            // Policy gradient loss
-            auto policy_loss = -( selected_log_prob * norm_rewards ).mean();
-            loss += policy_loss - entropy_coef * entropy;
-        }
-
-        // === Backprop ===
         loss.backward();
         optimizer.step();
 
-        total_loss += loss.detach().cpu().item<double>();
-
-        // === Track total reward (undiscounted, for logging) ===
-        float reward_sum = 0.0f;
-        for ( const auto & r : rewards )
-            reward_sum += r.cpu().item<float>();
-        epoch_total_reward += reward_sum;
+        out_loss += loss.item<float>();
     }
+
+    void NNAI::soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau )
+    {
+        // θ_target = τ*θ_local + (1-τ)*θ_target
+        torch::NoGradGuard no_grad;
+
+        auto local_params = local_model->named_parameters();
+        auto target_params = target_model->named_parameters();
+
+        for ( auto & item : local_params ) {
+            const auto & name = item.key();
+            auto & local_tensor = item.value();
+            auto & target_tensor = target_params[name];
+
+            // new_val = (tau * local) + ((1 - tau) * target)
+            torch::Tensor new_val = target_tensor.mul( 1.0 - tau ) + local_tensor.mul( tau );
+            target_tensor.copy_( new_val );
+        }
+    }
+
+    Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit )
+    {
+        Battle::Actions actions;
+        int uid = static_cast<int>( currentUnit.GetUID() );
+
+        if ( action_index <= 0 ) {
+            actions.emplace_back( Battle::Command::SKIP, uid );
+            return actions;
+        }
+
+        int targetIndex = action_index - 1;
+        // Clamp to valid board indices
+        const int maxIndex = Battle::Board::widthInCells * Battle::Board::heightInCells - 1; // board dimension assumed
+        if ( targetIndex < 0 )
+            targetIndex = 0;
+        if ( targetIndex > maxIndex )
+            targetIndex = maxIndex;
+
+        // If unit exists at target -> ATTACK
+        const auto * cell = arena.GetBoard()->GetCell( targetIndex );
+        int targetUnitUID = -1;
+        if ( cell ) {
+            const auto * unit = cell->GetUnit();
+            if ( unit )
+                targetUnitUID = unit->GetUID();
+        }
+
+        int positionNum = currentUnit.GetPosition().GetHead()->GetIndex();
+        int attackDirection = -1;
+        // If there is a target unit, compute direction
+        if ( targetUnitUID != -1 ) {
+            int attackTargetPosition = targetIndex;
+            attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
+            // Validate attack parameters quickly
+            if ( CheckAttackParameters( &currentUnit, ( cell ? cell->GetUnit() : nullptr ), positionNum, attackTargetPosition, attackDirection ) ) {
+                actions.emplace_back( Battle::Command::ATTACK, uid, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
+                return actions;
+            }
+            // If invalid attack, fallthrough to attempt move
+        }
+
+        // Attempt move to the target cell (validate)
+        if ( CheckMoveParameters( &currentUnit, targetIndex ) ) {
+            actions.emplace_back( Battle::Command::MOVE, uid, targetIndex );
+            return actions;
+        }
+
+        // As fallback SKIP
+        actions.emplace_back( Battle::Command::SKIP, uid );
+        return actions;
+    }
+
+    // --- Battle-specific helpers retained from original file (reward, print, etc.) ---
+
+    // Previous state tracking for reward calculation
+    int prevEnemyHP1 = -1, prevAllyHP1 = -1, prevEnemyUnits1 = -1, prevAllyUnits1 = -1;
+    int prevEnemyHP2 = -1, prevAllyHP2 = -1, prevEnemyUnits2 = -1, prevAllyUnits2 = -1;
 
     void resetGameRewardStats( Battle::Arena & arena )
     {
@@ -579,8 +522,22 @@ namespace NNAI
         prevAllyUnits2 = arena.getForce( color ).GetAliveCounts();
     }
 
-} // NNAI
+    bool isNNControlled( int color )
+    {
+        if ( isComparing ) {
+            switch ( color ) {
+            case 0x01: // BLUE
+                return true;
+            case 0x04: // RED
+                return false;
+            }
+        }
+        return true;
+    }
 
+} // namespace NNAI
+
+// --- Non-namespace helpers kept mostly as in your original file ---
 void PrintUnitInfo( const Battle::Unit & unit )
 {
     std::cout << "Unit Name: " << unit.GetName() << ", Unit Id:" << unit.GetID() << ", Unit UID: " << unit.GetUID() << ", Count: " << unit.GetCount()
@@ -650,78 +607,103 @@ namespace Battle
         return os;
     }
 
-    float calculateReward( const Battle::Arena & currArena, int color )
+    float calculateReward( const torch::Tensor & prev_state, const torch::Tensor & curr_state, int color )
     {
+        // Config constants matching prepareStateTensor / extractUnitFeaturesVec
+        const int total_slots = 10; // 1 current + 4 allies + 5 enemies
+        const float HP_MAX = 500.0f; // must match normalization used in extractUnitFeaturesVec
+
+        // Validate shapes
+        if ( !prev_state.defined() || !curr_state.defined() || prev_state.numel() == 0 || curr_state.numel() == 0 ) {
+            // If no previous state available, we cannot compute delta — return 0 (but still check win later)
+            // Check for win condition via curr_state -> if enemy HP all zero, give win reward
+            try {
+                // compute enemy total hp from curr_state below
+            }
+            catch ( ... ) {
+                return 0.0f;
+            }
+        }
+
+        // Work on CPU and contiguous
+        torch::Tensor prev = prev_state.detach().cpu().contiguous();
+        torch::Tensor cur = curr_state.detach().cpu().contiguous();
+
+        // Determine feature_size: INPUT_SIZE must be divisible by total_slots
+        int64_t input_elems = prev.numel();
+        if ( input_elems != static_cast<int64_t>( NNAI::INPUT_SIZE ) ) {
+            // If the incoming tensor shape doesn't match INPUT_SIZE fall back to safe behavior:
+            // try to reshape or clamp, but here we'll attempt best-effort: if divisible by total_slots use that
+            if ( input_elems % total_slots != 0 ) {
+                // Can't interpret layout reliably
+                if ( !NNAI::skipDebugLog )
+                    std::cerr << "[calculateRewardFromStates] Unexpected prev_state size " << input_elems << " (expected " << NNAI::INPUT_SIZE << ")\n";
+                return 0.0f;
+            }
+        }
+        int feature_size = static_cast<int>( input_elems / total_slots );
+
+        // Enemy slots are at indices 5..9 (0=current, 1-4 allies)
+        const int enemy_slot_start = 1 + 4; // =5
+        const int enemy_slot_count = 5;
+
+        // Hitpoints index inside per-unit features (based on extractUnitFeaturesVec)
+        const int hitpoint_idx = 4;
+
+        // Sum normalized hitpoints across enemy slots for prev and cur
+        float prev_enemy_hp_norm_sum = 0.0f;
+        float curr_enemy_hp_norm_sum = 0.0f;
+
+        for ( int slot = 0; slot < enemy_slot_count; ++slot ) {
+            int base = ( enemy_slot_start + slot ) * feature_size;
+            int hp_idx = base + hitpoint_idx;
+            if ( hp_idx < 0 || hp_idx >= prev.numel() )
+                continue; // safety
+
+            float prev_hp_norm = prev[hp_idx].item<float>();
+            float cur_hp_norm = cur[hp_idx].item<float>();
+
+            // clamp to [0,1] as the extractor should produce normalized values
+            if ( !std::isfinite( prev_hp_norm ) )
+                prev_hp_norm = 0.0f;
+            if ( !std::isfinite( cur_hp_norm ) )
+                cur_hp_norm = 0.0f;
+            prev_hp_norm = std::max( 0.0f, std::min( 1.0f, prev_hp_norm ) );
+            cur_hp_norm = std::max( 0.0f, std::min( 1.0f, cur_hp_norm ) );
+
+            prev_enemy_hp_norm_sum += prev_hp_norm;
+            curr_enemy_hp_norm_sum += cur_hp_norm;
+        }
+
+        // Convert normalized sums to raw HP sums (approximate using HP_MAX)
+        float prev_enemy_hp_sum = prev_enemy_hp_norm_sum * HP_MAX;
+        float curr_enemy_hp_sum = curr_enemy_hp_norm_sum * HP_MAX;
+
+        // Compute delta (damage dealt)
+        float delta_enemy_hp = prev_enemy_hp_sum - curr_enemy_hp_sum;
+
+        // Reward: percent of damage relative to previous enemy HP sum (avoid division by zero)
         float reward = 0.0f;
-
-        if ( !NNAI::skipDebugLog )
-            std::cout << "\n[DEBUG] calculateReward: color=" << color << std::endl;
-
-        // Select previous values
-        int * prevEnemyHP;
-        int * prevEnemyUnits;
-        if ( color == currArena.GetArmy1Color() ) {
-            prevEnemyHP = &NNAI::prevEnemyHP1;
-            prevEnemyUnits = &NNAI::prevEnemyUnits1;
-        }
-        else {
-            prevEnemyHP = &NNAI::prevEnemyHP2;
-            prevEnemyUnits = &NNAI::prevEnemyUnits2;
+        float denom = ( prev_enemy_hp_sum > 1e-6f ) ? prev_enemy_hp_sum : 1.0f;
+        if ( delta_enemy_hp > 0.0f ) {
+            reward += 100.0f * ( delta_enemy_hp / denom );
         }
 
-        // Get current values
-        int currEnemyHP = currArena.getEnemyForce( color ).GetAliveHitPoints();
-        int totalEnemyHP = currArena.getEnemyForce( color ).GetTotalHitPoints();
-        int currEnemyUnits = currArena.getEnemyForce( color ).GetAliveCounts();
-        int currAllyHP = currArena.getForce( color ).GetAliveHitPoints();
-        int currAllyUnits = currArena.getForce( color ).GetAliveCounts();
-
-        if ( !NNAI::skipDebugLog ) {
-            std::cout << "[DEBUG] Current: EnemyHP=" << currEnemyHP << ", AllyHP=" << currAllyHP << ", EnemyUnits=" << currEnemyUnits << ", AllyUnits=" << currAllyUnits
-                      << std::endl;
-
-            std::cout << "[DEBUG] Previous: EnemyHP=" << *prevEnemyHP << ", EnemyUnits=" << *prevEnemyUnits << std::endl;
-        }
-
-        // Only calculate reward if not first turn
-        if ( *prevEnemyHP != -1 ) {
-            float deltaEnemyHP = static_cast<float>( *prevEnemyHP - currEnemyHP );
-            reward += 100.0f * deltaEnemyHP / static_cast<float>( totalEnemyHP ); // Damage dealt in percent
-
+        // Win bonus: if estimated enemy HP is zero (all enemy hp slots are zero)
+        if ( curr_enemy_hp_sum <= 0.0f + 1e-6f ) {
+            reward += 1000.0f;
             if ( !NNAI::skipDebugLog )
-                std::cout << "[DEBUG] Delta: EnemyHP=" << deltaEnemyHP << ", PartialReward=" << reward << std::endl;
+                std::cout << "[DEBUG] calculateRewardFromStates: Win detected (enemy HP sum zero)." << std::endl;
         }
 
+        // Ensure non-negative
         reward = std::max( reward, 0.0f );
 
-        // Win condition
-        if ( currEnemyHP == 0 ) {
-            reward += 1000;
-            if ( !NNAI::skipDebugLog )
-                std::cout << "[DEBUG] Win detected: Enemy defeated." << std::endl;
-            if ( color == currArena.GetArmy1Color() ) {
-                NNAI::m1WinCount++;
-            }
-            else {
-                NNAI::m2WinCount++;
-            }
+        if ( !NNAI::skipDebugLog ) {
+            std::cout << "[DEBUG] calculateRewardFromStates: prev_hp_sum=" << prev_enemy_hp_sum << ", curr_hp_sum=" << curr_enemy_hp_sum << ", delta=" << delta_enemy_hp
+                      << ", reward=" << reward << std::endl;
         }
-
-        // Update for next turn
-        *prevEnemyHP = currEnemyHP;
-        *prevEnemyUnits = currEnemyUnits;
-        if ( color == currArena.GetArmy1Color() ) {
-            NNAI::prevAllyHP1 = currAllyHP;
-            NNAI::prevAllyUnits1 = currAllyUnits;
-        }
-        else {
-            NNAI::prevAllyHP2 = currAllyHP;
-            NNAI::prevAllyUnits2 = currAllyUnits;
-        }
-
-        if ( !NNAI::skipDebugLog )
-            std::cout << "[DEBUG] Final reward for color " << color << ": " << reward << std::endl;
 
         return reward;
     }
-}
+} // namespace Battle

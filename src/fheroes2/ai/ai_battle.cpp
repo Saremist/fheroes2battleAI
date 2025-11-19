@@ -650,8 +650,6 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         plannedActions = planUnitTurn( arena, currentUnit );
     }
 
-    // std::cout << plannedActions << std::endl;
-
     // Return immediately if our limit of turns has been exceeded
     if ( isLimitOfTurnsExceeded( arena, actions ) ) {
         return;

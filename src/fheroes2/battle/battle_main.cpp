@@ -330,8 +330,8 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
 {
     Result result;
     // reset savestates
-    NNAI::prevEnemyHP1 = NNAI::prevAllyHP1 = NNAI::prevEnemyUnits1 = NNAI::prevAllyUnits1 = -1;
-    NNAI::prevEnemyHP2 = NNAI::prevAllyHP2 = NNAI::prevEnemyUnits2 = NNAI::prevAllyUnits2 = -1;
+    // NNAI::prevEnemyHP1 = NNAI::prevAllyHP1 = NNAI::prevEnemyUnits1 = NNAI::prevAllyUnits1 = -1;
+    // NNAI::prevEnemyHP2 = NNAI::prevAllyHP2 = NNAI::prevEnemyUnits2 = NNAI::prevAllyUnits2 = -1;
 
     while ( true ) {
         Rand::DeterministicRandomGenerator randomGenerator( battleSeed );
@@ -340,7 +340,7 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
         DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() )
         DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army2 " << army2.String() )
 
-        NNAI::resetGameRewardStats( arena );
+        // NNAI::resetGameRewardStats( arena );
         while ( arena.BattleValid() ) {
             arena.Turns();
         }
@@ -348,12 +348,14 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
         // std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Battle ended!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
 
         result = arena.GetResult();
-        // std::cout << result << std::endl;
 
-        if ( showBattle ) {
-            const bool clearMessageLog = ( result.army1 & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.army2 & ( RESULT_RETREAT | RESULT_SURRENDER ) );
-            arena.FadeArena( clearMessageLog );
-        }
+        if ( NNAI::isTraining )
+            // std::cout << result << std::endl;
+
+            if ( showBattle ) {
+                const bool clearMessageLog = ( result.army1 & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.army2 & ( RESULT_RETREAT | RESULT_SURRENDER ) );
+                arena.FadeArena( clearMessageLog );
+            }
 
         if ( !NNAI::isTraining && isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
             showBattle = true;
