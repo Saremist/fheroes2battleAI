@@ -150,10 +150,13 @@ void FillRandomTrainingTroops( Heroes * hero )
         return;
 
     auto & army = hero->GetArmy();
-    std::random_device rd;
-    std::mt19937 gen( rd() );
-    std::discrete_distribution<> dist( { 3, 6, 3, 1 } ); // Centered around 3
-    int numTroops = dist( gen ) + 2; // Gives 2 to 5, centered on 3
+    // std::random_device rd;
+    // std::mt19937 gen( rd() );
+    // std::discrete_distribution<> dist( { 3, 6, 3, 1 } ); // Centered around 3
+    // int numTroops = dist( gen ) + 2; // Gives 2 to 5, centered on 3
+
+    int numTroops = 2; // Gives 2 to 5, centered on 3
+    static const int troopIDs[5] = { 10, 45, 23, 34, 56 };
 
     for ( int i = 0; i < 5; ++i ) {
         auto troop = army.GetTroop( i );
@@ -161,13 +164,11 @@ void FillRandomTrainingTroops( Heroes * hero )
             continue;
 
         if ( i < numTroops ) {
-            int monsterId = getRandomMonterId();
-            troop->SetMonster( monsterId );
+            // int monsterId = getRandomMonterId();
+            int monsterID = troopIDs[i];
+            troop->SetMonster( monsterID );
             Monster::LevelType level = troop->GetRandomUnitLevel();
             troop->SetCount( troop->GetRNDSize() * ( 5 - int( level ) ) ); // redistributed monstercount for more balanced gameplay
-
-            // std::cout << "Position: " << i << ", Monster ID: " << monsterId << ", Level: " << static_cast<int>( level ) << ", Count: " << troop->GetCount() <<
-            // std::endl; // raw output for debugging
         }
         else {
             troop->SetMonster( 0 );
@@ -279,13 +280,12 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_START_GOOD, 0 ), display, buttonStart.area().getPosition(), { -5, 5 } );
     fheroes2::addGradientShadow( fheroes2::AGG::GetICN( ICN::BUTTON_EXIT_GOOD, 0 ), display, buttonExit.area().getPosition(), { -5, 5 } );
 
-
     buttonStart.draw();
     buttonExit.draw();
     buttonReset.draw();
 
     display.render();
-    
+
     bool result = NNAI::isTraining;
 
     while ( !NNAI::isTraining && le.HandleEvents() ) { // will skip input and instantly start a game if training mode is enabled
@@ -343,7 +343,6 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
                     updateHero( first, cur_pt );
                 }
 
-                
                 redrawOpponents( cur_pt );
 
                 first.needRedraw = true;

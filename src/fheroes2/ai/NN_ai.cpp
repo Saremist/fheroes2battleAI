@@ -21,14 +21,23 @@
 namespace NNAI
 {
     // --- Global Q-networks (one per color) ---
-    std::shared_ptr<QNetwork> g_qmodel_blue = nullptr;
-    std::shared_ptr<QNetwork> g_qmodel_red = nullptr;
+    // ---- Per-color per type models & shared training state ----
+    extern std::shared_ptr<QNetwork> g_qmodel_blue = nullptr;
+    extern std::shared_ptr<QNetwork> g_qmodel_red = nullptr;
+    extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged = nullptr;
+    extern std::shared_ptr<QNetwork> g_qmodel_red_ranged = nullptr;
 
-    std::shared_ptr<QNetwork> g_target_blue = nullptr;
-    std::shared_ptr<QNetwork> g_target_red = nullptr;
+    // Optionally a target network per color (for stability )
+    extern std::shared_ptr<QNetwork> g_target_blue = nullptr;
+    extern std::shared_ptr<QNetwork> g_target_red = nullptr;
+    extern std::shared_ptr<QNetwork> g_target_blue_ranged = nullptr;
+    extern std::shared_ptr<QNetwork> g_target_red_ranged = nullptr;
 
-    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
-    std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
+    // per-model buffers (choose one approach)
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged = nullptr;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged = nullptr;
 
     bool isTraining = true;
     bool skipDebugLog = true;
@@ -87,7 +96,6 @@ namespace NNAI
             QNetwork model( INPUT_SIZE, HIDDEN_SIZE, ACTION_SIZE, NUM_HIDDEN_LAYERS );
             model->to( device );
             namespace fs = std::filesystem;
-            // fs::create_directories( fs::path( model_path ).parent_path() );
             torch::save( model, model_path );
             if ( !skipDebugLog )
                 std::cout << "Created and saved new Q-model to " << model_path << std::endl;
@@ -136,9 +144,13 @@ namespace NNAI
         device = dev;
         g_replay_buffer_blue = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
         g_replay_buffer_red = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_blue_ranged = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_red_ranged = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
 
         load_qmodel( g_qmodel_blue, "qmodel_blue.pt" );
         load_qmodel( g_qmodel_red, "qmodel_red.pt" );
+        load_qmodel( g_qmodel_blue_ranged, "qmodel_blue_ranged.pt" );
+        load_qmodel( g_qmodel_red_ranged, "qmodel_red_ranged.pt" );
 
         if ( g_qmodel_blue ) {
             g_target_blue = std::make_shared<QNetwork>( *g_qmodel_blue );
@@ -148,6 +160,14 @@ namespace NNAI
             g_target_red = std::make_shared<QNetwork>( *g_qmodel_red );
             g_target_red->get()->to( device );
         }
+        if ( g_qmodel_blue_ranged ) {
+            g_target_blue_ranged = std::make_shared<QNetwork>( *g_qmodel_blue_ranged );
+            g_target_blue_ranged->get()->to( device );
+        }
+        if ( g_qmodel_red_ranged ) {
+            g_target_red_ranged = std::make_shared<QNetwork>( *g_qmodel_red_ranged );
+            g_target_red_ranged->get()->to( device );
+        }
     }
 
     // --- Action selection ---
@@ -155,16 +175,33 @@ namespace NNAI
     {
         if ( !model )
             return 0;
+
         // Ensure shape [1, INPUT_SIZE]
         if ( state_tensor.dim() == 1 )
             state_tensor = state_tensor.unsqueeze( 0 );
+
         state_tensor = state_tensor.to( device ).to( torch::kFloat32 );
 
         model->get()->eval();
         torch::NoGradGuard no_grad;
-        auto qvals = model->get()->forward( state_tensor ); // shape [1, ACTION_SIZE]
-        auto action = std::get<1>( qvals.max( 1 ) ).item<int64_t>();
-        return static_cast<int>( action );
+
+        // Q-values: [1, ACTION_SIZE]
+        torch::Tensor qvals = model->get()->forward( state_tensor ).squeeze( 0 );
+
+        float max_q = qvals.max().item<float>();
+        torch::Tensor best_actions = torch::nonzero( qvals == max_q ).squeeze( 1 );
+
+        // Randomly pick one of them
+        int num_best = best_actions.size( 0 );
+
+        if ( num_best == 1 )
+            return best_actions.item<int>();
+
+        static thread_local std::mt19937 rng{ std::random_device{}() };
+        std::uniform_int_distribution<int> dist( 0, num_best - 1 );
+
+        int chosen = best_actions[dist( rng )].item<int>();
+        return chosen;
     }
 
     int selectActionEpsilonGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor )
@@ -183,13 +220,20 @@ namespace NNAI
         }
     }
 
-    std::shared_ptr<QNetwork> getQModelByColor( int color )
+    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged )
     {
         switch ( color ) {
         case 0x01: // BLUE
-            return g_qmodel_blue;
+            if ( isRanged )
+                return g_qmodel_blue_ranged;
+            else
+                return g_qmodel_blue;
         case 0x04: // RED
-            return g_qmodel_red;
+            if ( isRanged )
+                return g_qmodel_red_ranged;
+            else
+                return g_qmodel_red;
+
         default:
             std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
             return nullptr;
@@ -200,30 +244,23 @@ namespace NNAI
     // Re-use and adapt the old feature extraction but produce a flat tensor of length INPUT_SIZE
     std::vector<float> extractUnitFeaturesVec( const Battle::Unit & unit, const Battle::Arena & arena, const Battle::Unit & currentunit )
     {
+        int currentUnitTotalHits = currentunit.GetHitPoints() * currentunit.GetCount();
+
         // Same features as before
         std::vector<float> features;
         std::pair<int, int> coords = getXYCoordinates( unit );
 
-        features.push_back( static_cast<float>( unit.GetUID() ) );
-        features.push_back( normalize( static_cast<float>( coords.first ), 0, 9 ) );
-        features.push_back( normalize( static_cast<float>( coords.second ), 0, 11 ) );
-        features.push_back( normalize( static_cast<float>( unit.GetCount() ), 0, 300 ) );
-        features.push_back( normalize( static_cast<float>( unit.GetHitPoints() ), 0, 500 ) );
-        features.push_back( normalize( static_cast<float>( unit.GetSpeed( false, true ) ), 0, 10 ) );
-        features.push_back( normalize( static_cast<float>( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ), 0, 50 ) );
-        features.push_back( normalize( static_cast<float>( unit.GetAttack() ), 0, 100 ) );
-        features.push_back( normalize( static_cast<float>( unit.GetDefense() ), 0, 100 ) );
-        features.push_back( unit.isFlying() ? 1.0f : 0.0f );
+        features.push_back( static_cast<float>( coords.first ) );
+        features.push_back( static_cast<float>( coords.second ) );
+        features.push_back( unit.GetHitPoints() * unit.GetCount() );
+
+        features.push_back( normalize( unit.GetHitPoints() * unit.GetCount(), 0, currentUnitTotalHits ) );
+        features.push_back( normalize( unit.GetSpeed( false, true ), 0, currentunit.GetSpeed( false, true ) ) );
+        features.push_back( normalize( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ), 0, currentunit.GetSpeed( false, true ) ) );
+        features.push_back( normalize( unit.GetAttack(), 0, currentunit.GetAttack() ) );
+        features.push_back( normalize( unit.GetDefense(), 0, currentunit.GetDefense() ) );
         features.push_back( unit.isArchers() ? 1.0f : 0.0f );
-        features.push_back( normalize( static_cast<float>( unit.GetShots() ), 0, 50 ) );
-        features.push_back( unit.isHandFighting() ? 1.0f : 0.0f );
-        features.push_back( currentunit.GetColor() == unit.GetColor() ? 1.0f : 0.0f );
         features.push_back( unit.GetColor() == arena.GetArmy1Color() ? 1.0f : 0.0f );
-        features.push_back( unit.Modes( Battle::TR_MOVED ) ? 1.0f : 0.0f );
-        features.push_back( unit.Modes( Battle::TR_RESPONDED ) ? 1.0f : 0.0f );
-        features.push_back(
-            arena.GetBoard()->CanAttackTargetFromPosition( currentunit, unit, arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ) ) ? 1.0f
-                                                                                                                                                               : 0.0f );
 
         return features;
     }
@@ -236,6 +273,10 @@ namespace NNAI
         std::vector<std::vector<float>> featList;
 
         // Current unit
+        if ( !currentUnit.isValid() ) {
+            // std::cout << "AAAAAAAAAAAA" << std::endl; // TODO
+            return torch::zeros( { INPUT_SIZE }, torch::kFloat32 ).to( device );
+        }
         featList.push_back( extractUnitFeaturesVec( currentUnit, arena, currentUnit ) );
 
         // Allies up to 4
@@ -281,6 +322,7 @@ namespace NNAI
         }
 
         torch::Tensor t = torch::from_blob( flat.data(), { INPUT_SIZE }, torch::kFloat32 ).clone().to( device );
+
         return t; // shape [INPUT_SIZE]
     }
 
@@ -326,7 +368,7 @@ namespace NNAI
         }
 
         // Choose model by color
-        std::shared_ptr<QNetwork> model = getQModelByColor( currentUnit.GetColor() );
+        std::shared_ptr<QNetwork> model = getQModelByColorAndType( currentUnit.GetColor(), bool( currentUnit.GetShots() > 0 ) );
 
         // If no NN model available, fallback to SKIP to avoid crashes.
         if ( !model ) {
@@ -361,10 +403,8 @@ namespace NNAI
     }
 
     // --- Memory API ---
-    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color )
+    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color, bool isRanged )
     {
-        if ( !g_replay_buffer_blue || !g_replay_buffer_red )
-            return;
         Experience e;
         e.state = state.detach().to( torch::kCPU );
         e.action = action;
@@ -372,14 +412,20 @@ namespace NNAI
         e.next_state = next_state.detach().to( torch::kCPU );
         e.done = done;
         if ( color == 0x01 ) // BLUE
-            g_replay_buffer_blue->push( e );
+            if ( isRanged )
+                g_replay_buffer_blue_ranged->push( e );
+            else
+                g_replay_buffer_blue->push( e );
         else if ( color == 0x04 ) // RED
-            g_replay_buffer_red->push( e );
+            if ( isRanged )
+                g_replay_buffer_red_ranged->push( e );
+            else
+                g_replay_buffer_red->push( e );
     }
 
     // --- Optimization step ---
     void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
-                         torch::Device device, float & out_loss )
+                         torch::Device device, float & out_loss, float & out_reward )
     {
         if ( !replay_buffer )
             return;
@@ -401,6 +447,8 @@ namespace NNAI
             actions.push_back( e.action );
             rewards.push_back( static_cast<float>( e.reward ) );
             dones.push_back( e.done ? 1u : 0u );
+            if ( e.done )
+                std::cout << "DONE" << std::endl;
         }
 
         auto state_batch = torch::stack( states ); // [B, INPUT_SIZE]
@@ -428,9 +476,10 @@ namespace NNAI
         optimizer.step();
 
         out_loss += loss.item<float>();
+        out_reward += reward_batch.sum().item<float>();
     }
 
-    void NNAI::soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau )
+    void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau )
     {
         // θ_target = τ*θ_local + (1-τ)*θ_target
         torch::NoGradGuard no_grad;
@@ -481,7 +530,12 @@ namespace NNAI
         // If there is a target unit, compute direction
         if ( targetUnitUID != -1 ) {
             int attackTargetPosition = targetIndex;
+            positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
             attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
+            if ( currentUnit.GetShots() > 0 ) {
+                attackDirection = -1; // swap to archery if available
+                positionNum = -1;
+            }
             // Validate attack parameters quickly
             if ( CheckAttackParameters( &currentUnit, ( cell ? cell->GetUnit() : nullptr ), positionNum, attackTargetPosition, attackDirection ) ) {
                 actions.emplace_back( Battle::Command::ATTACK, uid, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
@@ -535,6 +589,20 @@ namespace NNAI
         return true;
     }
 
+    int getClosestNeighborIndex( const Battle::Unit & unit, const int32_t targetIndex, Battle::Arena & arena )
+    {
+        int closestIndex = -1;
+        uint32_t closestDistance = 9999;
+        for ( Battle::CellDirection dir = Battle::TOP_LEFT; dir < Battle::CENTER; ++dir ) {
+            int32_t neighborIndex = Battle::Board::GetIndexDirection( targetIndex, dir );
+            uint32_t distance = arena.GetBoard()->GetDistance( unit.GetPosition(), neighborIndex );
+            if ( distance < closestDistance ) {
+                closestDistance = distance;
+                closestIndex = neighborIndex;
+            }
+        }
+        return closestIndex;
+    }
 } // namespace NNAI
 
 // --- Non-namespace helpers kept mostly as in your original file ---
@@ -609,101 +677,79 @@ namespace Battle
 
     float calculateReward( const torch::Tensor & prev_state, const torch::Tensor & curr_state, int color )
     {
-        // Config constants matching prepareStateTensor / extractUnitFeaturesVec
-        const int total_slots = 10; // 1 current + 4 allies + 5 enemies
-        const float HP_MAX = 500.0f; // must match normalization used in extractUnitFeaturesVec
+        // Config (must match your feature extraction)
+        constexpr int total_slots = 10; // 1 current + 4 allies + 5 enemies
+        constexpr int enemy_slot_start = 1 + 4; // enemy slots start index (slot 5)
+        constexpr int enemy_slot_count = 5;
+        constexpr int hitpoint_idx = 2; // index inside per-unit features for HP (normalized 0..1)
+        constexpr float EPS = 1e-6f;
 
-        // Validate shapes
-        if ( !prev_state.defined() || !curr_state.defined() || prev_state.numel() == 0 || curr_state.numel() == 0 ) {
-            // If no previous state available, we cannot compute delta — return 0 (but still check win later)
-            // Check for win condition via curr_state -> if enemy HP all zero, give win reward
-            try {
-                // compute enemy total hp from curr_state below
-            }
-            catch ( ... ) {
-                return 0.0f;
-            }
+        // Curr state must exist
+        if ( !curr_state.defined() || curr_state.numel() == 0 ) {
+            std::cout << "error calculating reward" << std::endl;
+            return 0.0f;
         }
 
-        // Work on CPU and contiguous
-        torch::Tensor prev = prev_state.detach().cpu().contiguous();
+        // Work on CPU & contiguous copies
         torch::Tensor cur = curr_state.detach().cpu().contiguous();
+        torch::Tensor prev = prev_state.detach().cpu().contiguous();
 
-        // Determine feature_size: INPUT_SIZE must be divisible by total_slots
-        int64_t input_elems = prev.numel();
-        if ( input_elems != static_cast<int64_t>( NNAI::INPUT_SIZE ) ) {
-            // If the incoming tensor shape doesn't match INPUT_SIZE fall back to safe behavior:
-            // try to reshape or clamp, but here we'll attempt best-effort: if divisible by total_slots use that
-            if ( input_elems % total_slots != 0 ) {
-                // Can't interpret layout reliably
-                if ( !NNAI::skipDebugLog )
-                    std::cerr << "[calculateRewardFromStates] Unexpected prev_state size " << input_elems << " (expected " << NNAI::INPUT_SIZE << ")\n";
-                return 0.0f;
+        int64_t elems = prev.numel();
+        int feature_size = static_cast<int>( elems / total_slots );
+
+        // Helper: sum normalized enemy HP from a tensor
+        auto sumEnemyHp = [&]( const torch::Tensor & t ) -> float {
+            float sum = 0.0f;
+            int64_t total = t.numel();
+            for ( int s = 0; s < enemy_slot_count; ++s ) {
+                int idx = ( enemy_slot_start + s ) * feature_size + hitpoint_idx;
+                if ( idx < 0 || idx >= total )
+                    continue;
+                float v = t[idx].item<float>();
+
+                if ( !std::isfinite( v ) )
+                    v = 0.0f;
+                sum += v;
             }
-        }
-        int feature_size = static_cast<int>( input_elems / total_slots );
 
-        // Enemy slots are at indices 5..9 (0=current, 1-4 allies)
-        const int enemy_slot_start = 1 + 4; // =5
-        const int enemy_slot_count = 5;
+            return sum;
+        };
 
-        // Hitpoints index inside per-unit features (based on extractUnitFeaturesVec)
-        const int hitpoint_idx = 4;
+        float prev_enemy_hp_sum = sumEnemyHp( prev );
+        float curr_enemy_hp_sum = sumEnemyHp( cur );
 
-        // Sum normalized hitpoints across enemy slots for prev and cur
-        float prev_enemy_hp_norm_sum = 0.0f;
-        float curr_enemy_hp_norm_sum = 0.0f;
-
-        for ( int slot = 0; slot < enemy_slot_count; ++slot ) {
-            int base = ( enemy_slot_start + slot ) * feature_size;
-            int hp_idx = base + hitpoint_idx;
-            if ( hp_idx < 0 || hp_idx >= prev.numel() )
-                continue; // safety
-
-            float prev_hp_norm = prev[hp_idx].item<float>();
-            float cur_hp_norm = cur[hp_idx].item<float>();
-
-            // clamp to [0,1] as the extractor should produce normalized values
-            if ( !std::isfinite( prev_hp_norm ) )
-                prev_hp_norm = 0.0f;
-            if ( !std::isfinite( cur_hp_norm ) )
-                cur_hp_norm = 0.0f;
-            prev_hp_norm = std::max( 0.0f, std::min( 1.0f, prev_hp_norm ) );
-            cur_hp_norm = std::max( 0.0f, std::min( 1.0f, cur_hp_norm ) );
-
-            prev_enemy_hp_norm_sum += prev_hp_norm;
-            curr_enemy_hp_norm_sum += cur_hp_norm;
-        }
-
-        // Convert normalized sums to raw HP sums (approximate using HP_MAX)
-        float prev_enemy_hp_sum = prev_enemy_hp_norm_sum * HP_MAX;
-        float curr_enemy_hp_sum = curr_enemy_hp_norm_sum * HP_MAX;
-
-        // Compute delta (damage dealt)
+        // Compute damage done (positive if enemies lost HP)
         float delta_enemy_hp = prev_enemy_hp_sum - curr_enemy_hp_sum;
 
-        // Reward: percent of damage relative to previous enemy HP sum (avoid division by zero)
+        // Normaliser: use previous enemy HP sum when available and > EPS.
+        // If previous is missing or extremely small, use conservative maximum (enemy_slot_count * HP_MAX)
+        float denom = prev_enemy_hp_sum;
+
         float reward = 0.0f;
-        float denom = ( prev_enemy_hp_sum > 1e-6f ) ? prev_enemy_hp_sum : 1.0f;
         if ( delta_enemy_hp > 0.0f ) {
+            // percent damage relative to previous enemy HP (scaled by 100)
             reward += 100.0f * ( delta_enemy_hp / denom );
         }
 
-        // Win bonus: if estimated enemy HP is zero (all enemy hp slots are zero)
-        if ( curr_enemy_hp_sum <= 0.0f + 1e-6f ) {
+        // Win bonus if current estimated enemy HP is zero (all enemies dead)
+        if ( curr_enemy_hp_sum <= EPS ) {
             reward += 1000.0f;
             if ( !NNAI::skipDebugLog )
-                std::cout << "[DEBUG] calculateRewardFromStates: Win detected (enemy HP sum zero)." << std::endl;
+                std::cout << "[DEBUG] calculateReward: Win detected (enemy HP sum zero).\n";
         }
 
-        // Ensure non-negative
-        reward = std::max( reward, 0.0f );
+        // Clamp non-negative
+        if ( reward < 0.0f )
+            reward = 0.0f;
 
         if ( !NNAI::skipDebugLog ) {
-            std::cout << "[DEBUG] calculateRewardFromStates: prev_hp_sum=" << prev_enemy_hp_sum << ", curr_hp_sum=" << curr_enemy_hp_sum << ", delta=" << delta_enemy_hp
-                      << ", reward=" << reward << std::endl;
+            std::cout << "[DEBUG] calculateReward: prev_hp_sum=" << prev_enemy_hp_sum << ", curr_hp_sum=" << curr_enemy_hp_sum << ", delta=" << delta_enemy_hp
+                      << ", reward=" << reward << '\n';
         }
+
+        std::cout << "reward: " << reward << std::endl;
 
         return reward;
     }
+
 } // namespace Battle

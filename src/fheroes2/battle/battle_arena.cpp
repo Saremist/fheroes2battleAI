@@ -652,11 +652,13 @@ void Battle::Arena::Turns()
                 bool done = false;
                 torch::Tensor next_state = NNAI::prepareStateTensor( *this, *_currentUnit );
                 int reward = calculateReward( NNAI::saved_game_state, next_state, _currentUnit->GetArmyColor() );
-                if ( !this->GetCommander1()->GetArmy().isValid() || !this->GetCommander2()->GetArmy().isValid() ) {
+                if ( reward > 1000 ) {
+                    // std::cout << "#0003 Reward: " << reward << "Color: " << _currentUnit->GetArmyColor() << std::endl;
                     done = true;
+                    // std::cout << "#0004 DONE" << std::endl;
                 }
                 NNAI::remember_experience( NNAI::saved_game_state.detach().cpu(), (uint64_t)NNAI::saved_action, (double)reward, next_state.detach().cpu(), done,
-                                           _currentUnit->GetColor() );
+                                           _currentUnit->GetColor(), bool( _currentUnit->GetShots() > 0 ) );
             }
         }
     }

@@ -352,12 +352,18 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 std::shared_ptr<QNetwork> target;
                 std::string name;
                 int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
+                bool isRanged; // ranged id
             };
             std::vector<ModelEntry> models;
             if ( g_qmodel_blue )
-                models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01 } );
+                models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01, false } );
             if ( g_qmodel_red )
-                models.push_back( { g_qmodel_red, g_target_red, "red", 0x04 } );
+                models.push_back( { g_qmodel_red, g_target_red, "red", 0x04, false } );
+            if ( g_qmodel_blue )
+                models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
+            if ( g_qmodel_red )
+                models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
+
             // add others similarly if you load them
 
             if ( models.empty() ) {
@@ -372,6 +378,10 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
                 optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
             }
+
+            double DynamicEPS_Decay = ( EPS_START - EPS_END ) / NUM_SELF_PLAY_GAMES;
+
+            std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
 
             // Epoch loop
             for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
@@ -391,6 +401,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 // IMPORTANT: use per-color replay buffers here.
                 const int opt_steps = 1;
                 float epoch_loss = 0.0f;
+                float epoch_reward = 0.0f;
 
                 for ( int step = 0; step < opt_steps; ++step ) {
                     for ( size_t mi = 0; mi < models.size(); ++mi ) {
@@ -402,26 +413,33 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         // pick the correct replay buffer for this model's color
                         std::shared_ptr<ReplayBuffer> buf = nullptr;
                         if ( me.color == 0x01 )
-                            buf = g_replay_buffer_blue;
+                            if ( me.isRanged )
+                                buf = g_replay_buffer_blue_ranged;
+                            else
+                                buf = g_replay_buffer_blue;
                         else if ( me.color == 0x04 )
-                            buf = g_replay_buffer_red;
-                        // extend mapping if you add more colors
+                            if ( me.isRanged )
+                                buf = g_replay_buffer_red_ranged;
+                            else
+                                buf = g_replay_buffer_red;
+                        else
+                            std::cout << "Warning: No replay buffer mapped for color " << me.color << " in model " << me.name << std::endl;
 
                         if ( model_ptr && optimizer_ptr && buf ) {
                             try {
                                 // Only optimize if buffer has enough transitions for a minibatch
                                 if ( buf->size() >= BATCH_SIZE ) {
-                                    optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, epoch_loss );
+                                    optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, epoch_loss, epoch_reward );
                                 }
                             }
                             catch ( const std::exception & ex ) {
                                 std::cerr << "optimize_model exception for model " << me.name << ": " << ex.what() << std::endl;
                             }
                         }
+                        epoch_total_reward += epoch_reward;
+                        total_loss_all_models += epoch_loss;
                     }
                 }
-
-                total_loss_all_models += epoch_loss;
 
                 // Soft-update target networks
                 for ( auto & me : models ) {
@@ -465,7 +483,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                 std::string epochSummary = "Epoch " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs ) + " (" + std::to_string( percent_complete ) + "%)"
                                            + " | Time: " + format_seconds( epoch_duration.count() ) + " | ETA: " + format_seconds( estimated_remaining_time )
                                            + " | GPS: " + std::to_string( games_per_second ) + " | Models: " + modelNames
-                                           + " | Avg Loss: " + std::to_string( games_played > 0 ? total_loss_all_models / (double)games_played : 0.0 )
+                                           + " | Avg Reward: " + std::to_string( games_played > 0 ? epoch_total_reward / 2 / (double)games_played : 0.0 )
                                            + " | Games Played: " + std::to_string( games_played );
 
                 std::cout << epochSummary << std::endl;
@@ -499,7 +517,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
 
                 // Decay epsilon
                 if ( epsilon > EPS_END ) {
-                    epsilon -= EPS_DECAY;
+                    epsilon -= DynamicEPS_Decay;
                     if ( epsilon < EPS_END )
                         epsilon = EPS_END;
                 }
@@ -646,21 +664,12 @@ int main( int argc, char ** argv )
     std::cout << "Device: " << NNAI::device << std::endl;
 
     if ( NNAI::isTraining ) {
-        // auto model1 = *NNAI::g_qmodel_blue;
-        // auto model2 = *NNAI::g_qmodel_red;
+        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 500; // Set the max turns without deaths for the planner
 
-        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 10; // Set the max turns without deaths for the planner
-
-        // model1->to( NNAI::device ); // Ensure model is on device
-        // model2->to( NNAI::device );
-
-        return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 500 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 10000, 0.0005, NNAI::device, /*games per epoch = */ 5 );
     }
 
-    /*NNAI::g_model1 = std::make_shared<NNAI::QNetworkImpl>( *NNAI::g_qmodel_blue );
-    NNAI::g_model2 = std::make_shared<NNAI::QNetworkImpl>( *NNAI::g_qmodel_red );
-    NNAI::g_model1->get()->to( NNAI::device );
-    NNAI::g_model2->get()->to( NNAI::device );*/
-
+    // Initialize Q-models and per-color replay buffers
+    NNAI::initialize_qmodels( NNAI::device );
     return default_main( argc, argv );
 }

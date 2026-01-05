@@ -24,17 +24,17 @@
 namespace NNAI
 {
     // ---- Configuration constants ----
-    const int INPUT_SIZE = 180; // Size of the input feature vector (state representation)
+    const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
     const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
-    const int ACTION_SIZE = 32; // Number of discrete actions (change to your real action count)
+    const int ACTION_SIZE = 99; // Number of discrete actions (change to your real action count)
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
     const size_t BATCH_SIZE = 64; // Mini-batch size for optimization
     const double GAMMA = 0.99; // Discount factor
     const double TAU = 1e-3; // For soft update of target network (if used)
     const double EPS_START = 1.0; // Initial epsilon for epsilon-greedy
-    const double EPS_END = 0.01; // Minimum epsilon
-    const double EPS_DECAY = 1e-5; // Epsilon decay per step (or use multiplicative decay)
+    const double EPS_END = 0.05; // Minimum epsilon
+    // const double EPS_DECAY = 1e-5; // Epsilon decay per step (or use multiplicative decay)
     const int TRAINING_STEP_UPDATE = 4; // How often to call optimizer (every N steps)
 
     extern torch::Device device;
@@ -119,17 +119,23 @@ namespace NNAI
         std::mt19937 rng_;
     };
 
-    // ---- Per-color models & shared training state ----
+    // ---- Per-color per type models & shared training state ----
     extern std::shared_ptr<QNetwork> g_qmodel_blue;
     extern std::shared_ptr<QNetwork> g_qmodel_red;
+    extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged;
+    extern std::shared_ptr<QNetwork> g_qmodel_red_ranged;
 
     // Optionally a target network per color (for stability)
     extern std::shared_ptr<QNetwork> g_target_blue;
     extern std::shared_ptr<QNetwork> g_target_red;
+    extern std::shared_ptr<QNetwork> g_target_blue_ranged;
+    extern std::shared_ptr<QNetwork> g_target_red_ranged;
 
-    // Single shared replay buffer or per-model buffers (choose one approach)
+    // per-model buffers (choose one approach)
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged;
 
     // Training state
     extern bool isTraining;
@@ -147,7 +153,7 @@ namespace NNAI
     void save_qmodel( const QNetwork & model, const std::string & model_path );
     void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, const std::string & model_path );
 
-    std::shared_ptr<QNetwork> getQModelByColor( int color );
+    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged );
 
     // Epsilon-greedy action selection
     // state_tensor must be a 1D tensor shape [INPUT_SIZE] or 2D [1,INPUT_SIZE]
@@ -167,7 +173,7 @@ namespace NNAI
     // Optimize the model with a batch sampled from replay buffer
     // optimizer provided externally to keep flexibility
     void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
-                         torch::Device device, float & out_loss );
+                         torch::Device device, float & out_loss, float & out_reward );
 
     // Soft update target network parameters: target = tau*local + (1-tau)*target
     void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau );
@@ -176,9 +182,11 @@ namespace NNAI
     int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
-    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color );
+    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color, bool isRanged );
 
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    int getClosestNeighborIndex( const Battle::Unit & unit, const int32_t targetIndex, Battle::Arena & arena );
 
     // Quick helpers
     inline int getIndexFromXY( int x, int y )
