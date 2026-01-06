@@ -468,7 +468,8 @@ void Battle::Arena::UnitTurn( const Units & orderHistory )
     DEBUG_LOG( DBG_BATTLE, DBG_TRACE, _currentUnit->String( true ) )
 
     if ( _currentUnit->isAffectedByMorale() ) {
-        _currentUnit->SetRandomMorale( _randomGenerator );
+        if ( !NNAI::isTraining ) // Disable morale if training NN AI
+            _currentUnit->SetRandomMorale( _randomGenerator );
     }
 
     assert( !_currentUnit->AllModes( MORALE_GOOD | MORALE_BAD ) );

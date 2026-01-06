@@ -411,6 +411,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
                         auto & optimizer_ptr = opt_pair.second;
 
                         // pick the correct replay buffer for this model's color
+
+                        std::cout << me.color << std::endl;
+
                         std::shared_ptr<ReplayBuffer> buf = nullptr;
                         if ( me.color == 0x01 )
                             if ( me.isRanged )
@@ -664,9 +667,9 @@ int main( int argc, char ** argv )
     std::cout << "Device: " << NNAI::device << std::endl;
 
     if ( NNAI::isTraining ) {
-        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 500; // Set the max turns without deaths for the planner
+        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 50; // Set the max turns without deaths for the planner
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 10000, 0.0005, NNAI::device, /*games per epoch = */ 5 );
+        return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 5 );
     }
 
     // Initialize Q-models and per-color replay buffers

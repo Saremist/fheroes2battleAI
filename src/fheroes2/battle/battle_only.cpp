@@ -155,7 +155,7 @@ void FillRandomTrainingTroops( Heroes * hero )
     // std::discrete_distribution<> dist( { 3, 6, 3, 1 } ); // Centered around 3
     // int numTroops = dist( gen ) + 2; // Gives 2 to 5, centered on 3
 
-    int numTroops = 2; // Gives 2 to 5, centered on 3
+    int numTroops = 4; // Gives 2 to 5, centered on 3
     static const int troopIDs[5] = { 10, 45, 23, 34, 56 };
 
     for ( int i = 0; i < 5; ++i ) {

@@ -747,8 +747,6 @@ namespace Battle
                       << ", reward=" << reward << '\n';
         }
 
-        std::cout << "reward: " << reward << std::endl;
-
         return reward;
     }
 
