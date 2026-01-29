@@ -293,7 +293,7 @@ Modified from the original fheroes2::Game::mainGameLoop() by
 Milan Wr\F3blewski for the purpose of Engineer thesis.
 */
 
-int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES )
+int NNAI::training_main( int argc, char ** argv, int64_t num_series, double learning_rate, torch::Device device, int64_t episodes_per_series )
 {
 #if defined( _WIN32 )
     assert( argc == __argc );
@@ -336,195 +336,132 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_epochs, double lear
         Game::Init();
         conf.setGameLanguage( conf.getGameLanguage() );
 
+        const CursorRestorer cursorRestorer( true, Cursor::POINTER );
+        double total_elapsed_seconds = 0.0;
+
+        std::stringstream log_buffer; // Buffer to hold log messages
+
+        // Initialize Q-models and per-color replay buffers
+        initialize_qmodels( device );
+
+        // Build model entries: include color id so we can pick buffer easily
+        struct ModelEntry
+        {
+            std::shared_ptr<QNetwork> model;
+            std::shared_ptr<QNetwork> target;
+            std::string name;
+            int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
+            bool isRanged; // ranged id
+        };
+        std::vector<ModelEntry> models;
+        if ( g_qmodel_blue )
+            models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01, false } );
+        if ( g_qmodel_red )
+            models.push_back( { g_qmodel_red, g_target_red, "red", 0x04, false } );
+        if ( g_qmodel_blue )
+            models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
+        if ( g_qmodel_red )
+            models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
+
+        // add others similarly if you load them
+
+        if ( models.empty() ) {
+            std::cerr << "No Q-models loaded. Aborting training." << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        // Create one optimizer per model (wrap new Adam into unique_ptr<Optimizer>)
+        std::vector<std::pair<std::shared_ptr<QNetwork>, std::unique_ptr<torch::optim::Optimizer>>> optimizers;
+        for ( auto & me : models ) {
+            me.model->get()->train();
+            auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
+            optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
+        }
+
+        double DynamicEPS_Decay = ( EPS_START - EPS_END ) / num_series * episodes_per_series;
+
+        std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
+
+        // ===== TRAINING LOOP: SERIES / EPISODES =====
         try {
-            const CursorRestorer cursorRestorer( true, Cursor::POINTER );
-            double total_elapsed_seconds = 0.0;
+            // replaces: epoch loop + NUM_SELF_PLAY_GAMES inner loop
+            for ( int64_t series = 0; series < num_series; ++series ) {
+                auto series_start = std::chrono::steady_clock::now();
 
-            std::stringstream log_buffer; // Buffer to hold log messages
+                float series_total_reward = 0.0f;
+                int series_games_played = 0;
 
-            // Initialize Q-models and per-color replay buffers
-            initialize_qmodels( device );
+                // ---- Play episodes in this series ----
+                for ( int64_t ep = 0; ep < episodes_per_series; ++ep ) {
+                    // Play one full game (self-play)
+                    float game_reward = 0.0f;
 
-            // Build model entries: include color id so we can pick buffer easily
-            struct ModelEntry
-            {
-                std::shared_ptr<QNetwork> model;
-                std::shared_ptr<QNetwork> target;
-                std::string name;
-                int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
-                bool isRanged; // ranged id
-            };
-            std::vector<ModelEntry> models;
-            if ( g_qmodel_blue )
-                models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01, false } );
-            if ( g_qmodel_red )
-                models.push_back( { g_qmodel_red, g_target_red, "red", 0x04, false } );
-            if ( g_qmodel_blue )
-                models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
-            if ( g_qmodel_red )
-                models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
+                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
+                    ++series_games_played;
 
-            // add others similarly if you load them
-
-            if ( models.empty() ) {
-                std::cerr << "No Q-models loaded. Aborting training." << std::endl;
-                return EXIT_FAILURE;
-            }
-
-            // Create one optimizer per model (wrap new Adam into unique_ptr<Optimizer>)
-            std::vector<std::pair<std::shared_ptr<QNetwork>, std::unique_ptr<torch::optim::Optimizer>>> optimizers;
-            for ( auto & me : models ) {
-                me.model->get()->train();
-                auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
-                optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
-            }
-
-            double DynamicEPS_Decay = ( EPS_START - EPS_END ) / NUM_SELF_PLAY_GAMES;
-
-            std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
-
-            // Epoch loop
-            for ( int64_t epoch = 0; epoch < num_epochs; ++epoch ) {
-                auto epoch_start = std::chrono::steady_clock::now();
-
-                float total_loss_all_models = 0.0f;
-                int games_played = 0;
-                float epoch_total_reward = 0.0f;
-
-                // Run self-play games for this epoch; trainingGameLoop should call remember_experience(..., color)
-                for ( int64_t g = 0; g < NUM_SELF_PLAY_GAMES; ++g ) {
-                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() );
-                    ++games_played;
-                }
-
-                // Optimization: run a small number of optimization passes per epoch.
-                // IMPORTANT: use per-color replay buffers here.
-                const int opt_steps = 1;
-                float epoch_loss = 0.0f;
-                float epoch_reward = 0.0f;
-
-                for ( int step = 0; step < opt_steps; ++step ) {
+                    // ---- Update Q after each game ----
                     for ( size_t mi = 0; mi < models.size(); ++mi ) {
                         auto & me = models[mi];
                         auto & opt_pair = optimizers[mi];
                         auto & model_ptr = opt_pair.first;
                         auto & optimizer_ptr = opt_pair.second;
 
-                        // pick the correct replay buffer for this model's color
-
-                        std::cout << me.color << std::endl;
-
                         std::shared_ptr<ReplayBuffer> buf = nullptr;
                         if ( me.color == 0x01 )
-                            if ( me.isRanged )
-                                buf = g_replay_buffer_blue_ranged;
-                            else
-                                buf = g_replay_buffer_blue;
+                            buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
                         else if ( me.color == 0x04 )
-                            if ( me.isRanged )
-                                buf = g_replay_buffer_red_ranged;
-                            else
-                                buf = g_replay_buffer_red;
-                        else
-                            std::cout << "Warning: No replay buffer mapped for color " << me.color << " in model " << me.name << std::endl;
+                            buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
 
-                        if ( model_ptr && optimizer_ptr && buf ) {
+                        if ( model_ptr && optimizer_ptr && buf && buf->size() >= BATCH_SIZE ) {
                             try {
-                                // Only optimize if buffer has enough transitions for a minibatch
-                                if ( buf->size() >= BATCH_SIZE ) {
-                                    optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, epoch_loss, epoch_reward );
-                                }
+                                optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, game_reward );
                             }
                             catch ( const std::exception & ex ) {
-                                std::cerr << "optimize_model exception for model " << me.name << ": " << ex.what() << std::endl;
+                                std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
                             }
                         }
-                        epoch_total_reward += epoch_reward;
-                        total_loss_all_models += epoch_loss;
                     }
+
+                    // accumulate per-episode totals
+                    series_total_reward += game_reward;
                 }
 
-                // Soft-update target networks
+                // ---- Soft-update after series completes ----
                 for ( auto & me : models ) {
                     if ( me.target && me.model ) {
                         try {
                             soft_update_target( *me.model, *me.target, TAU );
                         }
-                        catch ( const std::exception & ex ) {
-                            std::cerr << "soft_update_target exception for model " << me.name << ": " << ex.what() << std::endl;
+                        catch ( ... ) {
                         }
                     }
                 }
 
-                // Logging / timing like original training_main
-                auto epoch_end = std::chrono::steady_clock::now();
-                std::chrono::duration<double> epoch_duration = epoch_end - epoch_start;
-                total_elapsed_seconds += epoch_duration.count();
-                double avg_epoch_time = total_elapsed_seconds / static_cast<double>( epoch + 1 );
-                int64_t remaining_epochs = num_epochs - ( epoch + 1 );
-                double estimated_remaining_time = avg_epoch_time * remaining_epochs;
-                double games_per_second = ( epoch_duration.count() > 0.0 ) ? ( games_played / epoch_duration.count() ) : 0.0;
-                int percent_complete = static_cast<int>( ( ( epoch + 1.0 ) / num_epochs ) * 100.0 );
+                // ---- Logging for this series ----
+                auto series_end = std::chrono::steady_clock::now();
+                std::chrono::duration<double> d = series_end - series_start;
+                int pct = int( ( ( series + 1.0 ) / num_series ) * 100.0 );
 
-                auto format_seconds = []( double seconds ) -> std::string {
-                    int hrs = static_cast<int>( seconds ) / 3600;
-                    int mins = ( static_cast<int>( seconds ) % 3600 ) / 60;
-                    int secs = static_cast<int>( seconds ) % 60;
-                    char buffer[64];
-                    std::snprintf( buffer, sizeof( buffer ), "%02d:%02d:%02d", hrs, mins, secs );
-                    return std::string( buffer );
-                };
+                std::string msg = "Series " + std::to_string( series + 1 ) + "/" + std::to_string( num_series ) + " (" + std::to_string( pct ) + "%)"
+                                  + " | Time: " + std::to_string( d.count() ) + "s" + " | Episodes: " + std::to_string( series_games_played )
+                                  + " | Avg Reward: " + std::to_string( series_total_reward / (double)series_games_played );
 
-                // Build model summary pieces
-                std::string modelNames;
-                for ( size_t i = 0; i < models.size(); ++i ) {
-                    if ( i )
-                        modelNames += ", ";
-                    modelNames += models[i].name;
+                std::cout << msg << std::endl;
+                log_buffer << msg << std::endl;
+
+                // ---- Save models/log every series ----
+                std::ofstream log( "training_log.txt", std::ios::app );
+                log << log_buffer.str();
+                log_buffer.str( "" );
+                log.close();
+
+                for ( auto & me : models ) {
+                    save_qmodel( *me.model, "qmodel_" + me.name + ".pt" );
                 }
 
-                std::string epochSummary = "Epoch " + std::to_string( epoch + 1 ) + "/" + std::to_string( num_epochs ) + " (" + std::to_string( percent_complete ) + "%)"
-                                           + " | Time: " + format_seconds( epoch_duration.count() ) + " | ETA: " + format_seconds( estimated_remaining_time )
-                                           + " | GPS: " + std::to_string( games_per_second ) + " | Models: " + modelNames
-                                           + " | Avg Reward: " + std::to_string( games_played > 0 ? epoch_total_reward / 2 / (double)games_played : 0.0 )
-                                           + " | Games Played: " + std::to_string( games_played );
-
-                std::cout << epochSummary << std::endl;
-                log_buffer << epochSummary << std::endl;
-
-                // Periodic save & flush log
-                if ( ( epoch + 1 ) % 10 == 0 || epoch == num_epochs - 1 ) {
-                    std::ofstream log_file( "training_log.txt", std::ios::app | std::ios::out );
-                    if ( !log_file ) {
-                        std::cerr << "Failed to open training_log.txt for writing. \n";
-                    }
-                    else {
-                        log_file << log_buffer.str();
-                        log_buffer.str( "" );
-                        log_file.close();
-                    }
-
-                    // Save each model
-                    for ( auto & me : models ) {
-                        try {
-                            if ( me.model ) {
-                                std::string outname = "qmodel_" + me.name + ".pt";
-                                save_qmodel( *me.model, outname );
-                            }
-                        }
-                        catch ( const std::exception & ex ) {
-                            std::cerr << "Failed to save model " << me.name << ": " << ex.what() << std::endl;
-                        }
-                    }
-                }
-
-                // Decay epsilon
-                if ( epsilon > EPS_END ) {
-                    epsilon -= DynamicEPS_Decay;
-                    if ( epsilon < EPS_END )
-                        epsilon = EPS_END;
-                }
-            } // epoch loop
+                // ---- Decay epsilon here ----
+                epsilon = std::max( EPS_END, epsilon - DynamicEPS_Decay );
+            }
         }
         catch ( const fheroes2::InvalidDataResources & ex ) {
             ERROR_LOG( ex.what() )
@@ -667,9 +604,9 @@ int main( int argc, char ** argv )
     std::cout << "Device: " << NNAI::device << std::endl;
 
     if ( NNAI::isTraining ) {
-        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 50; // Set the max turns without deaths for the planner
+        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
 
-        return NNAI::training_main( argc, argv, /*epochs = */ 100000, 0.0005, NNAI::device, /*games per epoch = */ 5 );
+        return NNAI::training_main( argc, argv, /*series = */ 1000, 0.0005, NNAI::device, /*episodes per series = */ 500 );
     }
 
     // Initialize Q-models and per-color replay buffers

@@ -586,6 +586,16 @@ void Battle::Arena::Turns()
         bool towersActed = false;
         bool catapultActed = false;
 
+        if ( NNAI::isTraining ) {
+            _currentUnit = GetCurrentUnit( *_army1, *_army2, _army1->GetColor() );
+            NNAI::initial_game_state_blue = NNAI::prepareStateTensor( *this, *_currentUnit );
+            NNAI::initial_game_state_blue.to( NNAI::device );
+
+            _currentUnit = GetCurrentUnit( *_army1, *_army2, _army2->GetColor() );
+            NNAI::initial_game_state_red = NNAI::prepareStateTensor( *this, *_currentUnit );
+            NNAI::initial_game_state_red.to( NNAI::device );
+        }
+
         while ( BattleValid() ) {
             // We can get the nullptr here if there are no units left waiting for their turn
             _currentUnit = GetCurrentUnit( *_army1, *_army2, GetOppositeColor( _lastActiveUnitArmyColor ) );
@@ -647,18 +657,24 @@ void Battle::Arena::Turns()
                 break;
             }
 
+            torch::Tensor prev_state = NNAI::prepareStateTensor( *this, *_currentUnit );
+
             UnitTurn( orderHistory );
 
+            torch::Tensor curr_state = NNAI::prepareStateTensor( *this, *_currentUnit );
+
+            // if ( NNAI::isTraining ) {
             if ( NNAI::isTraining ) {
                 bool done = false;
-                torch::Tensor next_state = NNAI::prepareStateTensor( *this, *_currentUnit );
-                int reward = calculateReward( NNAI::saved_game_state, next_state, _currentUnit->GetArmyColor() );
-                if ( reward > 1000 ) {
-                    // std::cout << "#0003 Reward: " << reward << "Color: " << _currentUnit->GetArmyColor() << std::endl;
+                int reward = 0;
+                if ( !BattleValid() ) {
                     done = true;
-                    // std::cout << "#0004 DONE" << std::endl;
+                    if ( _currentUnit->GetArmyColor() == _army1->GetColor() )
+                        reward = calculateReward( NNAI::initial_game_state_blue, curr_state, _currentUnit->GetArmyColor() );
+                    else
+                        reward = calculateReward( NNAI::initial_game_state_red, curr_state, _currentUnit->GetArmyColor() );
                 }
-                NNAI::remember_experience( NNAI::saved_game_state.detach().cpu(), (uint64_t)NNAI::saved_action, (double)reward, next_state.detach().cpu(), done,
+                NNAI::remember_experience( curr_state.detach().cpu(), prev_state.detach().cpu(), (uint64_t)NNAI::saved_action, (double)reward, done,
                                            _currentUnit->GetColor(), bool( _currentUnit->GetShots() > 0 ) );
             }
         }

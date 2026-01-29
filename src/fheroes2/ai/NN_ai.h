@@ -26,7 +26,7 @@ namespace NNAI
     // ---- Configuration constants ----
     const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
     const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
-    const int ACTION_SIZE = 99; // Number of discrete actions (change to your real action count)
+    const int ACTION_SIZE = 99 + 2; // Number of discrete actions tiels on board + 2 actions to select //+ 5 enemies to attack
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
     const size_t BATCH_SIZE = 64; // Mini-batch size for optimization
@@ -38,7 +38,9 @@ namespace NNAI
     const int TRAINING_STEP_UPDATE = 4; // How often to call optimizer (every N steps)
 
     extern torch::Device device;
-    extern torch::Tensor saved_game_state;
+
+    extern torch::Tensor initial_game_state_blue;
+    extern torch::Tensor initial_game_state_red;
     extern int saved_action;
 
     // ---- Simple MLP Q-network ----
@@ -96,9 +98,9 @@ namespace NNAI
     struct Experience
     {
         torch::Tensor state; // shape: [INPUT_SIZE] or [1, INPUT_SIZE]
+        torch::Tensor prev_state; // shape: [INPUT_SIZE] or [1, INPUT_SIZE]
         int64_t action; // discrete action index
         double reward; // scalar
-        torch::Tensor next_state; // shape: [INPUT_SIZE] or [1, INPUT_SIZE]
         bool done; // terminal flag
     };
 
@@ -168,21 +170,28 @@ namespace NNAI
     // Convert an action index back to in-game Actions / Command
     Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit );
 
+    Battle::Actions AttackClosestEnemy( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    Battle::Actions DefendClosestAlly( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    std::vector<int> selectTopActions( std::shared_ptr<QNetwork> model, const torch::Tensor & state );
+
     // Add experience to replay buffer
 
     // Optimize the model with a batch sampled from replay buffer
     // optimizer provided externally to keep flexibility
     void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
-                         torch::Device device, float & out_loss, float & out_reward );
+                         torch::Device device, float & out_reward );
 
     // Soft update target network parameters: target = tau*local + (1-tau)*target
     void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau );
 
     bool isNNControlled( int color );
-    int training_main( int argc, char ** argv, int64_t num_epochs, double learning_rate, torch::Device device, int64_t NUM_SELF_PLAY_GAMES );
+
+    int training_main( int argc, char ** argv, int64_t num_series, double learning_rate, torch::Device device, int64_t episodes_per_series );
     void trainingGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion );
 
-    void remember_experience( const torch::Tensor & state, int64_t action, double reward, const torch::Tensor & next_state, bool done, int color, bool isRanged );
+    void remember_experience( const torch::Tensor & state, const torch::Tensor & next_state, int64_t action, double reward, bool done, int color, bool isRanged );
 
     Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
