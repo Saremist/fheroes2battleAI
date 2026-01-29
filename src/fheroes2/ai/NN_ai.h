@@ -27,7 +27,7 @@ namespace NNAI
     // ---- Configuration constants ----
     const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
     const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
-    const int ACTION_SIZE = 99 + 2; // Number of discrete actions tiels on board + 2 actions to select //+ 5 enemies to attack
+    const int ACTION_SIZE = 6 + 1 + 1 + 1; // Number of discrete actions 6 moves + 1 wait + attack nearest melee + attack nearest ranged
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
     const double GAMMA = 0.99; // Discount factor
@@ -174,9 +174,11 @@ namespace NNAI
     // Convert an action index back to in-game Actions / Command
     Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit );
 
-    Battle::Actions AttackClosestEnemy( Battle::Arena & arena, const Battle::Unit & currentUnit );
+    Battle::Actions AttackClosestEnemyMele( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
-    Battle::Actions DefendClosestAlly( Battle::Arena & arena, const Battle::Unit & currentUnit );
+    Battle::Actions AttackClosestEnemyRanged( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    int getClosestNeighborIndex( const Battle::Unit & unit, const int32_t targetIndex, Battle::Arena & arena );
 
     std::vector<int> selectTopActions( std::shared_ptr<QNetwork> model, const torch::Tensor & state );
 

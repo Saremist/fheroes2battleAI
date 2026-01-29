@@ -415,39 +415,36 @@ namespace NNAI
             return actions;
         }
 
-        int targetIndex = action_index;
-        // Clamp to valid board indices
-        const int maxIndex = Battle::Board::widthInCells * Battle::Board::heightInCells - 1;
-        if ( targetIndex < 0 )
-            targetIndex = 0;
-        if ( targetIndex > maxIndex ) {
-            int actionIndex = targetIndex - maxIndex - 1;
+        int directionIndex = action_index;
+        // Clamp to valid direction indices
+        const int maxIndex = 7;
+        if ( directionIndex > maxIndex ) {
+            int actionIndex = action_index - maxIndex - 1;
 
             if ( actionIndex == 0 ) {
-                actions.splice( actions.end(), AttackClosestEnemy( arena, currentUnit ) );
-                return actions;
+                actions.splice( actions.end(), AttackClosestEnemyMele( arena, currentUnit ) );
             }
             else if ( actionIndex == 1 ) {
-                actions.splice( actions.end(), DefendClosestAlly( arena, currentUnit ) );
-                return actions;
+                actions.splice( actions.end(), AttackClosestEnemyRanged( arena, currentUnit ) );
             }
             else {
                 actions.emplace_back( Battle::Command::SKIP, uid );
             }
+            return actions;
+        }
 
-            /*int enemyIndex = targetIndex - maxIndex - 1;
-            const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT,
-                                         &currentUnit );M
-            if ( enemies.size() > enemyIndex ) {
-                targetIndex = enemies[enemyIndex]->GetHeadIndex();
-            }
-            else {
-                actions.emplace_back( Battle::Command::SKIP, uid );
-            }*/
+        int targetCellIndex;
+        int SelectedDirection = pow( 2, ( directionIndex - 1 ) );
+        if ( arena.GetBoard()->isValidDirection( currentUnit.GetPosition().GetHead()->GetIndex(), SelectedDirection ) ) {
+            targetCellIndex = arena.GetBoard()->GetIndexDirection( currentUnit.GetPosition().GetHead()->GetIndex(), SelectedDirection );
+        }
+        else {
+            actions.emplace_back( Battle::Command::SKIP, uid );
+            return actions;
         }
 
         // If unit exists at target -> ATTACK
-        const auto * cell = arena.GetBoard()->GetCell( targetIndex );
+        const auto * cell = arena.GetBoard()->GetCell( targetCellIndex );
         int targetUnitUID = -1;
         if ( cell ) {
             const auto * unit = cell->GetUnit();
@@ -459,7 +456,7 @@ namespace NNAI
         int attackDirection = -1;
         // If there is a target unit, compute direction
         if ( targetUnitUID != -1 ) {
-            int attackTargetPosition = targetIndex;
+            int attackTargetPosition = directionIndex;
             positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
             attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
             if ( currentUnit.GetShots() > 0 ) {
@@ -475,8 +472,8 @@ namespace NNAI
         }
 
         // Attempt move to the target cell (validate)
-        if ( CheckMoveParameters( &currentUnit, targetIndex ) ) {
-            actions.emplace_back( Battle::Command::MOVE, uid, targetIndex );
+        if ( CheckMoveParameters( &currentUnit, targetCellIndex ) ) {
+            actions.emplace_back( Battle::Command::MOVE, uid, targetCellIndex );
             return actions;
         }
 
@@ -485,7 +482,7 @@ namespace NNAI
         return actions;
     }
 
-    Battle::Actions AttackClosestEnemy( Battle::Arena & arena, const Battle::Unit & currentUnit )
+    Battle::Actions AttackClosestEnemyMele( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         Battle::Actions actions;
         int uid = static_cast<int>( currentUnit.GetUID() );
@@ -505,10 +502,6 @@ namespace NNAI
             int attackTargetPosition = closestEnemy->GetHeadIndex();
             int positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
             int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
-            if ( currentUnit.GetShots() > 0 ) {
-                attackDirection = -1; // swap to archery if available
-                positionNum = -1;
-            }
             // Validate attack parameters
             if ( CheckAttackParameters( &currentUnit, closestEnemy, positionNum, attackTargetPosition, attackDirection ) ) {
                 actions.emplace_back( Battle::Command::ATTACK, uid, static_cast<int>( closestEnemy->GetUID() ), positionNum, attackTargetPosition, attackDirection );
@@ -522,29 +515,33 @@ namespace NNAI
         return actions;
     }
 
-    Battle::Actions DefendClosestAlly( Battle::Arena & arena, const Battle::Unit & currentUnit )
+    Battle::Actions AttackClosestEnemyRanged( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         Battle::Actions actions;
         int uid = static_cast<int>( currentUnit.GetUID() );
-        const Battle::Units allies( arena.GetCurrentForce().getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
-        const Battle::Unit * closestAlly = nullptr;
+        const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT, &currentUnit );
+        const Battle::Unit * closestEnemy = nullptr;
         int closestDistance = std::numeric_limits<int>::max();
-        for ( const Battle::Unit * ally : allies ) {
-            if ( ally && ally->isValid() ) {
-                int distance = arena.GetBoard()->GetDistance( currentUnit.GetPosition(), ally->GetPosition() );
+        for ( const Battle::Unit * enemy : enemies ) {
+            if ( enemy && enemy->isValid() && enemy->GetShots() > 0 ) {
+                int distance = arena.GetBoard()->GetDistance( currentUnit.GetPosition(), enemy->GetPosition() );
                 if ( distance < closestDistance ) {
                     closestDistance = distance;
-                    closestAlly = ally;
+                    closestEnemy = enemy;
                 }
             }
         }
-        if ( closestAlly ) {
-            int defendTargetPosition = closestAlly->GetHeadIndex();
-            int positionNum = getClosestNeighborIndex( currentUnit, defendTargetPosition, arena );
-            int defendDirection = Battle::Board::GetDirection( positionNum, defendTargetPosition );
-            // Validate defense parameters (if applicable)
-            if ( CheckMoveParameters( &currentUnit, positionNum ) ) {
-                actions.emplace_back( Battle::Command::MOVE, uid, positionNum );
+        if ( closestEnemy ) {
+            int attackTargetPosition = closestEnemy->GetHeadIndex();
+            int positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
+            int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
+            if ( currentUnit.GetShots() > 0 ) {
+                attackDirection = -1; // swap to archery if available
+                positionNum = -1;
+            }
+            // Validate attack parameters
+            if ( CheckAttackParameters( &currentUnit, closestEnemy, positionNum, attackTargetPosition, attackDirection ) ) {
+                actions.emplace_back( Battle::Command::ATTACK, uid, static_cast<int>( closestEnemy->GetUID() ), positionNum, attackTargetPosition, attackDirection );
             }
             else {
                 actions.emplace_back( Battle::Command::SKIP, uid );

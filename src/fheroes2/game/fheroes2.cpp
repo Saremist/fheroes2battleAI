@@ -380,7 +380,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         double DynamicEPS_Decay = ( EPS_START - EPS_END ) / ( num_series * episodes_per_series );
 
-        std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
+        std::cout << "Dynamic EPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
 
         // ===== TRAINING LOOP: SERIES / EPISODES =====
         try {
@@ -606,9 +606,9 @@ int main( int argc, char ** argv )
     std::cout << "Device: " << NNAI::device << std::endl;
 
     if ( NNAI::isTraining ) {
-        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
+        AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 25; // Set the max turns without deaths for the planner
 
-        return NNAI::training_main( argc, argv, /*series = */ 1000, 0.0005, NNAI::device, /*episodes per series = */ 1000 );
+        return NNAI::training_main( argc, argv, /*series = */ 100, 0.0005, NNAI::device, /*episodes per series = */ 500 );
     }
 
     // Initialize Q-models and per-color replay buffers
