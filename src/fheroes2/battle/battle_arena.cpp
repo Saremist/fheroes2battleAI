@@ -586,7 +586,9 @@ void Battle::Arena::Turns()
         bool towersActed = false;
         bool catapultActed = false;
 
-        if ( NNAI::isTraining ) {
+        if ( NNAI::isTraining && !NNAI::StateInitialized ) {
+            NNAI::StateInitialized = true;
+
             _currentUnit = GetCurrentUnit( *_army1, *_army2, _army1->GetColor() );
             NNAI::initial_game_state_blue = NNAI::prepareStateTensor( *this, *_currentUnit );
             NNAI::initial_game_state_blue.to( NNAI::device );

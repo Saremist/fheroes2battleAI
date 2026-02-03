@@ -23,13 +23,13 @@
 
 namespace NNAI
 {
+
     // ---- Configuration constants ----
     const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
     const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
     const int ACTION_SIZE = 99 + 2; // Number of discrete actions tiels on board + 2 actions to select //+ 5 enemies to attack
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
-    const size_t BATCH_SIZE = 64; // Mini-batch size for optimization
     const double GAMMA = 0.99; // Discount factor
     const double TAU = 1e-3; // For soft update of target network (if used)
     const double EPS_START = 1.0; // Initial epsilon for epsilon-greedy
@@ -111,8 +111,10 @@ namespace NNAI
 
         void push( const Experience & exp );
         std::vector<Experience> sample( size_t batch_size );
+        std::vector<Experience> get_all() const; // ?? add this
         size_t size() const noexcept;
 
+        bool set_last_reward( double reward );
         void clear();
 
     private:
@@ -124,25 +126,27 @@ namespace NNAI
     // ---- Per-color per type models & shared training state ----
     extern std::shared_ptr<QNetwork> g_qmodel_blue;
     extern std::shared_ptr<QNetwork> g_qmodel_red;
-    extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged;
-    extern std::shared_ptr<QNetwork> g_qmodel_red_ranged;
+    // extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged;
+    // extern std::shared_ptr<QNetwork> g_qmodel_red_ranged;
 
     // Optionally a target network per color (for stability)
     extern std::shared_ptr<QNetwork> g_target_blue;
     extern std::shared_ptr<QNetwork> g_target_red;
-    extern std::shared_ptr<QNetwork> g_target_blue_ranged;
-    extern std::shared_ptr<QNetwork> g_target_red_ranged;
+    // extern std::shared_ptr<QNetwork> g_target_blue_ranged;
+    // extern std::shared_ptr<QNetwork> g_target_red_ranged;
 
     // per-model buffers (choose one approach)
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged;
+    // extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged;
+    // extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged;
 
     // Training state
     extern bool isTraining;
     extern bool skipDebugLog;
     extern bool isComparing;
+
+    extern bool StateInitialized;
 
     extern double epsilon; // Current epsilon for epsilon-greedy
     extern int64_t training_steps_done;
@@ -180,8 +184,8 @@ namespace NNAI
 
     // Optimize the model with a batch sampled from replay buffer
     // optimizer provided externally to keep flexibility
-    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, size_t batch_size, double gamma,
-                         torch::Device device, float & out_reward );
+    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, double gamma, torch::Device device,
+                         float & out_reward );
 
     // Soft update target network parameters: target = tau*local + (1-tau)*target
     void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau );

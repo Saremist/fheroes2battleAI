@@ -358,10 +358,10 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
             models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01, false } );
         if ( g_qmodel_red )
             models.push_back( { g_qmodel_red, g_target_red, "red", 0x04, false } );
-        if ( g_qmodel_blue )
-            models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
-        if ( g_qmodel_red )
-            models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
+        // if ( g_qmodel_blue_ranged )
+        //     models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
+        // if ( g_qmodel_red_ranged )
+        //     models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
 
         // add others similarly if you load them
 
@@ -378,7 +378,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
             optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
         }
 
-        double DynamicEPS_Decay = ( EPS_START - EPS_END ) / num_series * episodes_per_series;
+        double DynamicEPS_Decay = ( EPS_START - EPS_END ) / ( num_series * episodes_per_series );
 
         std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
 
@@ -408,13 +408,15 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                         std::shared_ptr<ReplayBuffer> buf = nullptr;
                         if ( me.color == 0x01 )
-                            buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
+                            // buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
+                            buf = g_replay_buffer_blue;
                         else if ( me.color == 0x04 )
-                            buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
+                            // buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
+                            buf = g_replay_buffer_red;
 
-                        if ( model_ptr && optimizer_ptr && buf && buf->size() >= BATCH_SIZE ) {
+                        if ( model_ptr && optimizer_ptr && buf ) {
                             try {
-                                optimize_model( *model_ptr, *optimizer_ptr, buf, BATCH_SIZE, GAMMA, device, game_reward );
+                                optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device, game_reward );
                             }
                             catch ( const std::exception & ex ) {
                                 std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
@@ -606,7 +608,7 @@ int main( int argc, char ** argv )
     if ( NNAI::isTraining ) {
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
 
-        return NNAI::training_main( argc, argv, /*series = */ 1000, 0.0005, NNAI::device, /*episodes per series = */ 500 );
+        return NNAI::training_main( argc, argv, /*series = */ 500, 0.0005, NNAI::device, /*episodes per series = */ 500 );
     }
 
     // Initialize Q-models and per-color replay buffers

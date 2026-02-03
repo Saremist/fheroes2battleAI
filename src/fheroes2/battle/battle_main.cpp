@@ -340,6 +340,8 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
         DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() )
         DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army2 " << army2.String() )
 
+        NNAI::StateInitialized = false;
+
         while ( arena.BattleValid() ) {
             arena.Turns();
         }
