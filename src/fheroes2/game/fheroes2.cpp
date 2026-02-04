@@ -608,7 +608,7 @@ int main( int argc, char ** argv )
     if ( NNAI::isTraining ) {
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
 
-        return NNAI::training_main( argc, argv, /*series = */ 500, 0.0005, NNAI::device, /*episodes per series = */ 500 );
+        return NNAI::training_main( argc, argv, /*series = */ 1000, 0.0005, NNAI::device, /*episodes per series = */ 1000 );
     }
 
     // Initialize Q-models and per-color replay buffers

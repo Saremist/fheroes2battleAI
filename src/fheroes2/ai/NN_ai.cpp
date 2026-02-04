@@ -601,11 +601,15 @@ namespace NNAI
 
         if ( color == 0x01 ) {
             g_replay_buffer_blue->push( e );
-            // g_replay_buffer_red->set_last_reward( -reward );
+            // if ( reward > 0 ) {
+            //     g_replay_buffer_red->set_last_reward( 1000.0f - reward );
+            // }
         }
         else if ( color == 0x04 ) {
             g_replay_buffer_red->push( e );
-            // g_replay_buffer_blue->set_last_reward( -reward );
+            // if ( reward > 0 ) {
+            //     //g_replay_buffer_blue->set_last_reward( 1000.0f - reward );
+            // }
         }
     }
 
