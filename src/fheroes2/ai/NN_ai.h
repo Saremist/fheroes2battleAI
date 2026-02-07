@@ -26,8 +26,8 @@ namespace NNAI
 
     // ---- Configuration constants ----
     const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
-    const int HIDDEN_SIZE = 128; // Hidden layer size for the Q-network
     const int ACTION_SIZE = 99 + 2; // Number of discrete actions tiels on board + 2 actions to select //+ 5 enemies to attack
+    const int HIDDEN_SIZE = 256; // Hidden layer size for the Q-network
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
     const double GAMMA = 0.99; // Discount factor
@@ -35,13 +35,17 @@ namespace NNAI
     const double EPS_START = 1.0; // Initial epsilon for epsilon-greedy
     const double EPS_END = 0.05; // Minimum epsilon
     // const double EPS_DECAY = 1e-5; // Epsilon decay per step (or use multiplicative decay)
-    const int TRAINING_STEP_UPDATE = 4; // How often to call optimizer (every N steps)
+
+    extern int blue_monster_count;
+    extern int red_monster_count;
 
     extern torch::Device device;
 
     extern torch::Tensor initial_game_state_blue;
     extern torch::Tensor initial_game_state_red;
     extern int saved_action;
+
+    extern int enemyType;
 
     // ---- Simple MLP Q-network ----
     struct QNetworkImpl : torch::nn::Module
@@ -114,6 +118,7 @@ namespace NNAI
         std::vector<Experience> get_all() const; // ?? add this
         size_t size() const noexcept;
 
+        double get_last_reward() const;
         bool set_last_reward( double reward );
         void clear();
 
@@ -144,7 +149,7 @@ namespace NNAI
     // Training state
     extern bool isTraining;
     extern bool skipDebugLog;
-    extern bool isComparing;
+    extern bool isRunningExperiments;
 
     extern bool StateInitialized;
 
@@ -197,7 +202,13 @@ namespace NNAI
 
     void remember_experience( const torch::Tensor & state, const torch::Tensor & next_state, int64_t action, double reward, bool done, int color, bool isRanged );
 
-    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+    // Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    Battle::Actions NeuralPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    Battle::Actions AgresivePlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+    Battle::Actions RandomPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
 
     int getClosestNeighborIndex( const Battle::Unit & unit, const int32_t targetIndex, Battle::Arena & arena );
 

@@ -644,10 +644,26 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
     Battle::Actions plannedActions;
 
     if ( NNAI::isNNControlled( currentUnit.GetColor() ) ) {
-        plannedActions = NNAI::planUnitTurn( arena, currentUnit );
+        plannedActions = NNAI::NeuralPlanTurn( arena, currentUnit );
     }
     else {
-        plannedActions = planUnitTurn( arena, currentUnit );
+        switch ( NNAI::enemyType ) {
+        case -1:
+            plannedActions = NNAI::NeuralPlanTurn( arena, currentUnit );
+            break;
+        case 0:
+            plannedActions = planUnitTurn( arena, currentUnit );
+            break;
+        case 1:
+            plannedActions = NNAI::AgresivePlanTurn( arena, currentUnit );
+            break;
+        case 2:
+            plannedActions = NNAI::RandomPlanTurn( arena, currentUnit );
+            break;
+        default:
+            std::cout << "Unknown enemy type: " << NNAI::enemyType << ", fallback to default planning" << std::endl;
+            plannedActions = planUnitTurn( arena, currentUnit ); // fallback
+        }
     }
 
     // Return immediately if our limit of turns has been exceeded
@@ -899,7 +915,7 @@ Battle::Actions AI::BattlePlanner::planUnitTurn( Battle::Arena & arena, const Ba
     }
 
     // Step 3. Calculate spell heuristics
-    if ( isCommanderCanSpellcast( arena, _commander ) ) {
+    if ( isCommanderCanSpellcast( arena, _commander ) && !NNAI::isRunningExperiments && !NNAI::isTraining ) { // DISABLE SPELLS IF DOING EXPERIMENTS
         const SpellSelection & bestSpell = selectBestSpell( arena, currentUnit, false );
 
         if ( bestSpell.spellID != -1 ) {

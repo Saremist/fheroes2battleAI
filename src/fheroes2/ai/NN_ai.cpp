@@ -41,9 +41,14 @@ namespace NNAI
 
     bool isTraining = true;
     bool skipDebugLog = true;
-    bool isComparing = true;
+    bool isRunningExperiments = true;
 
     bool StateInitialized = false;
+
+    int blue_monster_count = 1;
+    int red_monster_count = 5;
+
+    int enemyType = -1;
 
     torch::Tensor initial_game_state_blue = torch::Tensor();
     torch::Tensor initial_game_state_red = torch::Tensor();
@@ -89,6 +94,13 @@ namespace NNAI
 
         buffer_.back().reward = reward;
         return true;
+    }
+
+    double ReplayBuffer::get_last_reward() const
+    {
+        if ( buffer_.empty() )
+            return 0.0;
+        return buffer_.back().reward;
     }
 
     std::vector<Experience> ReplayBuffer::get_all() const
@@ -363,13 +375,8 @@ namespace NNAI
         }
     }
 
-    Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
+    Battle::Actions NeuralPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        // If the unit already moved this turn, do nothing
-        if ( currentUnit.Modes( Battle::TR_MOVED ) ) {
-            return {};
-        }
-
         // Choose model by color
         std::shared_ptr<QNetwork> model = getQModelByColorAndType( currentUnit.GetColor(), bool( currentUnit.GetShots() > 0 ) );
 
@@ -403,6 +410,60 @@ namespace NNAI
         Battle::Actions a;
         a.emplace_back( Battle::Command::SKIP, currentUnit.GetUID() );
         return a;
+    }
+
+    Battle::Actions AgresivePlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
+    {
+        return NeuralPlanTurn( arena, currentUnit );
+    }
+
+    Battle::Actions RandomPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
+    {
+        Battle::Actions actions;
+        while ( true ) {
+            int targetCellIndex = rand() % 99;
+
+            // std::cout << "Random target Cell: " << targetCellIndex << std::endl;
+
+            const auto * targetCell = arena.GetBoard()->GetCell( targetCellIndex );
+
+            uint32_t uid = currentUnit.GetUID();
+            int targetUnitUID = -1;
+            if ( targetCell ) {
+                const auto * unit = targetCell->GetUnit();
+                if ( unit )
+                    targetUnitUID = unit->GetUID();
+            }
+
+            if ( currentUnit.GetPosition().GetHead()->GetIndex() == targetCellIndex ) { // If already on target cell, attempt SKIP
+                actions.emplace_back( Battle::Command::SKIP, uid );
+                return actions;
+            }
+            else if ( targetUnitUID != -1 ) { // Do archery first
+                int positionNum = -1;
+                int attackDirection = -1;
+                if ( currentUnit.GetShots() <= 0 ) { // Swap to  mele if archery not available
+                    positionNum = getClosestNeighborIndex( currentUnit, targetCellIndex, arena );
+                    attackDirection = Battle::Board::GetDirection( positionNum, targetCellIndex );
+                }
+
+                // Validate attack parameters quickly
+                if ( CheckAttackParameters( &currentUnit, ( targetCell ? targetCell->GetUnit() : nullptr ), positionNum, targetCellIndex, attackDirection ) ) {
+                    actions.emplace_back( Battle::Command::ATTACK, uid, targetUnitUID, positionNum, targetCellIndex, attackDirection );
+                    return actions;
+                }
+                // If invalid attack, fallthrough to attempt move
+            }
+            else if ( CheckMoveParameters( &currentUnit, targetCellIndex ) ) { // Attempt move to the target cell (validate)
+                actions.emplace_back( Battle::Command::MOVE, uid, targetCellIndex );
+                return actions;
+            }
+            /*else {
+                actions.emplace_back( Battle::Command::SKIP, uid );
+                std::cout << "FORCED SKIP" << std::endl;
+                return actions;
+            }*/
+        }
     }
 
     Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit )
@@ -476,7 +537,7 @@ namespace NNAI
 
         // Attempt move to the target cell (validate)
         if ( CheckMoveParameters( &currentUnit, targetIndex ) ) {
-            actions.emplace_back( Battle::Command::MOVE, uid, targetIndex );
+            actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), targetIndex );
             return actions;
         }
 
@@ -624,7 +685,7 @@ namespace NNAI
             return;
 
         // Take the entire buffer
-        auto batch = replay_buffer->get_all();
+        std::vector<NNAI::Experience> batch = replay_buffer->get_all();
         if ( batch.empty() )
             return;
 
@@ -694,7 +755,7 @@ namespace NNAI
 
     bool isNNControlled( int color )
     {
-        if ( isComparing ) {
+        if ( isRunningExperiments ) {
             switch ( color ) {
             case 0x01: // BLUE
                 return true;

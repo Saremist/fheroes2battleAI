@@ -103,6 +103,8 @@ namespace Battle
 
             int controlType{ CONTROL_HUMAN };
 
+            int monsterCount; // NNAI
+
             Army monster;
 
             Heroes heroBackup;

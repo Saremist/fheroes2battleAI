@@ -608,9 +608,8 @@ void Battle::Arena::ApplyActionAttack( Command & cmd )
     Unit * defender = GetTroopUID( defenderUID );
 
     if ( !Battle::CheckAttackParameters( attacker, defender, dst, tgt, dir ) ) { // Swap to fuction by ~Milan Wroblewski
-        ERROR_LOG( "Invalid parameters: "
-                   << "attacker uid: " << GetHexString( attackerUID ) << ", defender uid: " << GetHexString( defenderUID ) << ", dst: " << dst << ", tgt: " << tgt
-                   << ", dir: " << dir )
+        ERROR_LOG( "Invalid parameters: " << "attacker uid: " << GetHexString( attackerUID ) << ", defender uid: " << GetHexString( defenderUID ) << ", dst: " << dst
+                                          << ", tgt: " << tgt << ", dir: " << dir )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -689,8 +688,7 @@ void Battle::Arena::ApplyActionMove( Command & cmd )
     Unit * unit = GetTroopUID( uid );
 
     if ( !Battle::CheckMoveParameters( unit, dst ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "uid: " << GetHexString( uid ) << ", dst: " << dst )
+        ERROR_LOG( "Invalid parameters: " << "uid: " << GetHexString( uid ) << ", dst: " << dst )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -723,8 +721,7 @@ void Battle::Arena::ApplyActionSkip( Command & cmd )
     Unit * unit = GetTroopUID( uid );
 
     if ( !checkParameters( unit ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "uid: " << GetHexString( uid ) )
+        ERROR_LOG( "Invalid parameters: " << "uid: " << GetHexString( uid ) )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -770,8 +767,7 @@ void Battle::Arena::ApplyActionMorale( Command & cmd )
     Unit * unit = GetTroopUID( uid );
 
     if ( !checkParameters( unit, morale ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "uid: " << GetHexString( uid ) << ", morale: " << ( morale ? "good" : "bad" ) )
+        ERROR_LOG( "Invalid parameters: " << "uid: " << GetHexString( uid ) << ", morale: " << ( morale ? "good" : "bad" ) )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -1237,8 +1233,7 @@ void Battle::Arena::ApplyActionTower( Command & cmd )
     Unit * unit = GetTroopUID( uid );
 
     if ( !checkParameters( tower, unit ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "tower: " << type << ", uid: " << GetHexString( uid ) )
+        ERROR_LOG( "Invalid parameters: " << "tower: " << type << ", uid: " << GetHexString( uid ) )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -1304,8 +1299,8 @@ void Battle::Arena::ApplyActionCatapult( Command & cmd )
         using TargetUnderlyingType = std::underlying_type_t<decltype( target )>;
 
         if ( !checkParameters( target, damage ) ) {
-            ERROR_LOG( "Invalid parameters: "
-                       << "target: " << static_cast<TargetUnderlyingType>( target ) << ", damage: " << damage << ", hit: " << ( hit ? "yes" : "no" ) )
+            ERROR_LOG( "Invalid parameters: " << "target: " << static_cast<TargetUnderlyingType>( target ) << ", damage: " << damage
+                                              << ", hit: " << ( hit ? "yes" : "no" ) )
 
 #ifdef WITH_DEBUG
             assert( 0 );
@@ -1353,8 +1348,7 @@ void Battle::Arena::ApplyActionAutoSwitch( Command & cmd )
     const int color = cmd.GetNextValue();
 
     if ( !checkParameters( color ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "color: " << Color::String( color ) << " (" << color << ")" )
+        ERROR_LOG( "Invalid parameters: " << "color: " << Color::String( color ) << " (" << color << ")" )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -1521,8 +1515,7 @@ void Battle::Arena::ApplyActionSpellTeleport( Command & cmd )
     const Cell * cell = Board::GetCell( dst );
 
     if ( !checkParameters( unit, cell ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "src: " << src << ", dst: " << dst )
+        ERROR_LOG( "Invalid parameters: " << "src: " << src << ", dst: " << dst )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -1648,8 +1641,7 @@ void Battle::Arena::ApplyActionSpellMirrorImage( Command & cmd )
     Unit * unit = GetTroopBoard( who );
 
     if ( !checkParameters( unit ) ) {
-        ERROR_LOG( "Invalid parameters: "
-                   << "who: " << who )
+        ERROR_LOG( "Invalid parameters: " << "who: " << who )
 
 #ifdef WITH_DEBUG
         assert( 0 );
@@ -1702,7 +1694,6 @@ void Battle::Arena::ApplyActionSpellMirrorImage( Command & cmd )
             _interface->setStatus( _( "Spell failed!" ), true );
         }
     }
-
 }
 
 #include <ostream>

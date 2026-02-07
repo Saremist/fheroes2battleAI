@@ -329,9 +329,6 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
                                           const Funds & initialFunds2, HeroBase * commander1, HeroBase * commander2, bool isHumanBattle )
 {
     Result result;
-    // reset savestates
-    // NNAI::prevEnemyHP1 = NNAI::prevAllyHP1 = NNAI::prevEnemyUnits1 = NNAI::prevAllyUnits1 = -1;
-    // NNAI::prevEnemyHP2 = NNAI::prevAllyHP2 = NNAI::prevEnemyUnits2 = NNAI::prevAllyUnits2 = -1;
 
     while ( true ) {
         Rand::DeterministicRandomGenerator randomGenerator( battleSeed );

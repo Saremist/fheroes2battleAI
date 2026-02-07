@@ -322,21 +322,24 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         const DisplayInitializer displayInitializer;
         const DataInitializer dataInitializer;
-        ListFiles midiSoundFonts;
-        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
-        midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
+        // ListFiles midiSoundFonts;
+        // midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf2", false ) );
+        // midiSoundFonts.Append( Settings::FindFiles( System::concatPath( "files", "soundfonts" ), ".sf3", false ) );
 #ifdef WITH_DEBUG
         for ( const std::string & file : midiSoundFonts ) {
             DEBUG_LOG( DBG_GAME, DBG_INFO, "MIDI SoundFont to load: " << file )
         }
 #endif
-        const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
+        // const AudioManager::AudioInitializer audioInitializer( dataInitializer.getOriginalAGGFilePath(), dataInitializer.getExpansionAGGFilePath(), midiSoundFonts );
         fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL" ) );
         fheroes2::Display::instance().changePalette( nullptr, true );
         Game::Init();
         conf.setGameLanguage( conf.getGameLanguage() );
 
         const CursorRestorer cursorRestorer( true, Cursor::POINTER );
+
+        const bool allowTraining = !NNAI::isRunningExperiments;
+
         double total_elapsed_seconds = 0.0;
 
         std::stringstream log_buffer; // Buffer to hold log messages
@@ -351,19 +354,14 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
             std::shared_ptr<QNetwork> target;
             std::string name;
             int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
-            bool isRanged; // ranged id
         };
-        std::vector<ModelEntry> models;
-        if ( g_qmodel_blue )
-            models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01, false } );
-        if ( g_qmodel_red )
-            models.push_back( { g_qmodel_red, g_target_red, "red", 0x04, false } );
-        // if ( g_qmodel_blue_ranged )
-        //     models.push_back( { g_qmodel_blue_ranged, g_target_blue_ranged, "blue_ranged", 0x01, true } );
-        // if ( g_qmodel_red_ranged )
-        //     models.push_back( { g_qmodel_red_ranged, g_target_red_ranged, "red_ranged", 0x04, true } );
 
-        // add others similarly if you load them
+        std::vector<ModelEntry> models;
+
+        if ( g_qmodel_blue )
+            models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01 } );
+        if ( g_qmodel_red )
+            models.push_back( { g_qmodel_red, g_target_red, "red", 0x04 } );
 
         if ( models.empty() ) {
             std::cerr << "No Q-models loaded. Aborting training." << std::endl;
@@ -373,9 +371,17 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
         // Create one optimizer per model (wrap new Adam into unique_ptr<Optimizer>)
         std::vector<std::pair<std::shared_ptr<QNetwork>, std::unique_ptr<torch::optim::Optimizer>>> optimizers;
         for ( auto & me : models ) {
-            me.model->get()->train();
-            auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
-            optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
+            if ( allowTraining ) {
+                me.model->get()->train();
+                auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
+                optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
+            }
+            else {
+                me.model->get()->eval(); // inference-only
+                for ( auto & p : me.model->get()->parameters() ) {
+                    p.requires_grad_( false ); // hard freeze
+                }
+            }
         }
 
         double DynamicEPS_Decay = ( EPS_START - EPS_END ) / ( num_series * episodes_per_series );
@@ -384,85 +390,140 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         // ===== TRAINING LOOP: SERIES / EPISODES =====
         try {
-            // replaces: epoch loop + NUM_SELF_PLAY_GAMES inner loop
-            for ( int64_t series = 0; series < num_series; ++series ) {
-                auto series_start = std::chrono::steady_clock::now();
+            int blue_start = NNAI::isRunningExperiments ? 1 : -1;
+            int blue_end = NNAI::isRunningExperiments ? 5 : -1;
 
-                float series_total_reward = 0.0f;
-                int series_games_played = 0;
+            int red_start = NNAI::isRunningExperiments ? 1 : -1;
+            int red_end = NNAI::isRunningExperiments ? 5 : -1;
 
-                // ---- Play episodes in this series ----
-                for ( int64_t ep = 0; ep < episodes_per_series; ++ep ) {
-                    // Play one full game (self-play)
-                    float game_reward = 0.0f;
+            for ( int blue = blue_start; blue <= blue_end; ++blue ) {
+                for ( int red = red_start; red <= red_end; ++red ) {
+                    NNAI::blue_monster_count = blue;
+                    NNAI::red_monster_count = red;
+                    // ======SERIES========
+                    for ( int64_t series = 0; series < num_series; ++series ) {
+                        auto series_start = std::chrono::steady_clock::now();
 
-                    NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
-                    ++series_games_played;
+                        float series_total_reward = 0.0f;
 
-                    // ---- Update Q after each game ----
-                    for ( size_t mi = 0; mi < models.size(); ++mi ) {
-                        auto & me = models[mi];
-                        auto & opt_pair = optimizers[mi];
-                        auto & model_ptr = opt_pair.first;
-                        auto & optimizer_ptr = opt_pair.second;
+                        float blueTotalReward = 0.0f;
+                        float redTotalReward = 0.0f;
+                        int blue_wins = 0;
+                        int red_wins = 0;
 
-                        std::shared_ptr<ReplayBuffer> buf = nullptr;
-                        if ( me.color == 0x01 )
-                            // buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
-                            buf = g_replay_buffer_blue;
-                        else if ( me.color == 0x04 )
-                            // buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
-                            buf = g_replay_buffer_red;
+                        // ---- Play episodes in this series ----
+                        for ( int64_t ep = 0; ep < episodes_per_series; ++ep ) {
+                            // Play one full game (self-play)
+                            float game_reward = 0.0f;
 
-                        if ( model_ptr && optimizer_ptr && buf ) {
-                            try {
-                                optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device, game_reward );
+                            NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
+
+                            double _blueReward = g_replay_buffer_blue->get_last_reward();
+                            double _redReward = g_replay_buffer_red->get_last_reward();
+
+                            blueTotalReward += _blueReward;
+                            redTotalReward += _redReward;
+
+                            if ( _blueReward > _redReward ) {
+                                ++blue_wins;
                             }
-                            catch ( const std::exception & ex ) {
-                                std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
+                            else {
+                                ++red_wins;
                             }
+
+                            if ( allowTraining ) {
+                                // ---- Update Q after each game ----
+                                for ( size_t mi = 0; mi < models.size(); ++mi ) {
+                                    auto & me = models[mi];
+                                    auto & opt_pair = optimizers[mi];
+                                    auto & model_ptr = opt_pair.first;
+                                    auto & optimizer_ptr = opt_pair.second;
+
+                                    std::shared_ptr<ReplayBuffer> buf = nullptr;
+                                    if ( me.color == 0x01 )
+                                        // buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
+                                        buf = g_replay_buffer_blue;
+                                    else if ( me.color == 0x04 )
+                                        // buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
+                                        buf = g_replay_buffer_red;
+
+                                    if ( model_ptr && optimizer_ptr && buf ) {
+                                        try {
+                                            optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device, game_reward );
+                                        }
+                                        catch ( const std::exception & ex ) {
+                                            std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // accumulate per-episode totals
+                            series_total_reward += game_reward;
+                        }
+
+                        if ( allowTraining ) {
+                            // ---- Soft-update after series completes ----
+                            for ( auto & me : models ) {
+                                if ( me.target && me.model ) {
+                                    try {
+                                        soft_update_target( *me.model, *me.target, TAU );
+                                    }
+                                    catch ( ... ) {
+                                    }
+                                }
+                            }
+                        }
+
+                        // ---- Logging for this series ----
+                        auto series_end = std::chrono::steady_clock::now();
+                        std::chrono::duration<double> d = series_end - series_start;
+                        int pct = int( ( ( series + 1.0 ) / num_series ) * 100.0 );
+
+                        std::string msg = "Series " + std::to_string( series + 1 ) + "/" + std::to_string( num_series ) + " (" + std::to_string( pct ) + "%)"
+                                          + " | Time: " + std::to_string( d.count() ) + "s" + " | Episodes: " + std::to_string( episodes_per_series )
+                                          + " | Avg Reward: " + std::to_string( series_total_reward / (double)episodes_per_series )
+                                          + " | Blue/Red win percantage: " + std::to_string( ( (double)( blue_wins ) / (double)( episodes_per_series ) ) * 100 );
+                        if ( NNAI::isRunningExperiments ) {
+                            msg += " | Blue Troops: " + std::to_string( NNAI::blue_monster_count ) + " | Red Troops: " + std::to_string( NNAI::red_monster_count );
+                            msg += " | Enemy Type: ";
+                            switch ( NNAI::enemyType ) {
+                            case -1:
+                                msg += "NNAI Enemy";
+                                break;
+                            case 0:
+                                msg += "Default Enemy";
+                                break;
+                            case 1:
+                                msg += "Aggressive Enemy";
+                                break;
+                            case 2:
+                                msg += "Random Enemy";
+                                break;
+                            default:
+                                msg += "Unknown Enemy Type";
+                            }
+                        }
+
+                        std::cout << msg << std::endl;
+                        log_buffer << msg << std::endl;
+
+                        // ---- Save models/log every series ----
+                        std::ofstream log( "training_log.txt", std::ios::app );
+                        log << log_buffer.str();
+                        log_buffer.str( "" );
+                        log.close();
+
+                        if ( allowTraining ) {
+                            for ( auto & me : models ) {
+                                save_qmodel( *me.model, "qmodel_" + me.name + ".pt" );
+                            }
+
+                            // ---- Decay epsilon here ----
+                            epsilon = std::max( EPS_END, epsilon - DynamicEPS_Decay );
                         }
                     }
-
-                    // accumulate per-episode totals
-                    series_total_reward += game_reward;
                 }
-
-                // ---- Soft-update after series completes ----
-                for ( auto & me : models ) {
-                    if ( me.target && me.model ) {
-                        try {
-                            soft_update_target( *me.model, *me.target, TAU );
-                        }
-                        catch ( ... ) {
-                        }
-                    }
-                }
-
-                // ---- Logging for this series ----
-                auto series_end = std::chrono::steady_clock::now();
-                std::chrono::duration<double> d = series_end - series_start;
-                int pct = int( ( ( series + 1.0 ) / num_series ) * 100.0 );
-
-                std::string msg = "Series " + std::to_string( series + 1 ) + "/" + std::to_string( num_series ) + " (" + std::to_string( pct ) + "%)"
-                                  + " | Time: " + std::to_string( d.count() ) + "s" + " | Episodes: " + std::to_string( series_games_played )
-                                  + " | Avg Reward: " + std::to_string( series_total_reward / (double)series_games_played );
-
-                std::cout << msg << std::endl;
-                log_buffer << msg << std::endl;
-
-                // ---- Save models/log every series ----
-                std::ofstream log( "training_log.txt", std::ios::app );
-                log << log_buffer.str();
-                log_buffer.str( "" );
-                log.close();
-
-                for ( auto & me : models ) {
-                    save_qmodel( *me.model, "qmodel_" + me.name + ".pt" );
-                }
-
-                // ---- Decay epsilon here ----
-                epsilon = std::max( EPS_END, epsilon - DynamicEPS_Decay );
             }
         }
         catch ( const fheroes2::InvalidDataResources & ex ) {
@@ -585,18 +646,39 @@ int main( int argc, char ** argv )
     std::cin >> train_input;
     // Prompt user for debug logs skiping
     std::cout << "Skip Debug log? (y/n): ";
-    char debug_input = 'n';
-    std::cin >> debug_input;
+    char skip_debug_input = 'n';
+    std::cin >> skip_debug_input;
 
-    std::cout << "Disable Orginal AI comperasing mode? (y/n): ";
-    char compare_input = 'n';
-    std::cin >> compare_input;
+    std::cout << "NN Enemy? (y/n): ";
+    char auto_nn_enemy_input = 'n';
+    std::cin >> auto_nn_enemy_input;
+
+    std::cout << "Disable experiment mode? (y/n): ";
+    char disable_experiment_input = 'n';
+    std::cin >> disable_experiment_input;
+
+    char enemy_choice_input = 'n';
+
+    if ( auto_nn_enemy_input == 'y' || auto_nn_enemy_input == 'Y' ) {
+        NNAI::enemyType = -1; // Neural AI Enemy
+    }
+    else {
+        std::cout << "Select Enemy: " << std::endl;
+        std::cout << "0 -> Default Enemy" << std::endl;
+        std::cout << "1 -> Agressive Enemy" << std::endl;
+        std::cout << "2 -> Random Enemy" << std::endl;
+        while ( !( enemy_choice_input == '0' || enemy_choice_input == '1' || enemy_choice_input == '2' ) ) {
+            std::cout << "ENEMY: ";
+            std::cin >> enemy_choice_input;
+        }
+        NNAI::enemyType = static_cast<int>( enemy_choice_input - '0' );
+    }
 
     // Set isTraining based on user input
     // Note: isTraining must be non-const and not constexpr in NN_ai.h for this to work!
     NNAI::isTraining = ( train_input == 'y' || train_input == 'Y' );
-    NNAI::skipDebugLog = ( debug_input == 'y' || debug_input == 'Y' );
-    NNAI::isComparing = !( compare_input == 'y' || compare_input == 'Y' );
+    NNAI::skipDebugLog = ( skip_debug_input == 'y' || skip_debug_input == 'Y' );
+    NNAI::isRunningExperiments = !( disable_experiment_input == 'y' || disable_experiment_input == 'Y' );
 
     NNAI::device = torch::Device( torch::cuda::is_available() ? torch::kCUDA : torch::kCPU );
 
@@ -607,8 +689,10 @@ int main( int argc, char ** argv )
 
     if ( NNAI::isTraining ) {
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
-
-        return NNAI::training_main( argc, argv, /*series = */ 1000, 0.0005, NNAI::device, /*episodes per series = */ 1000 );
+        int numSeries = 100;
+        if ( NNAI::isRunningExperiments )
+            numSeries = 1;
+        return NNAI::training_main( argc, argv, /*series = */ numSeries, 0.0005, NNAI::device, /*episodes per series = */ 100 );
     }
 
     // Initialize Q-models and per-color replay buffers
