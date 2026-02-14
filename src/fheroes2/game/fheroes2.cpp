@@ -446,7 +446,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                                     if ( model_ptr && optimizer_ptr && buf ) {
                                         try {
-                                            optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device, game_reward );
+                                            optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device );
                                         }
                                         catch ( const std::exception & ex ) {
                                             std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;

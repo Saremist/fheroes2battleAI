@@ -192,8 +192,7 @@ namespace NNAI
 
     // Optimize the model with a batch sampled from replay buffer
     // optimizer provided externally to keep flexibility
-    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, double gamma, torch::Device device,
-                         float & out_reward );
+    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, double gamma, torch::Device device );
 
     // Soft update target network parameters: target = tau*local + (1-tau)*target
     void soft_update_target( QNetwork & local_model, QNetwork & target_model, double tau );

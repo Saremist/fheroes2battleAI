@@ -690,8 +690,7 @@ namespace NNAI
     }
 
     // --- Optimization step ---
-    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, double gamma, torch::Device device,
-                         float & out_reward )
+    void optimize_model( QNetwork & model, torch::optim::Optimizer & optimizer, std::shared_ptr<ReplayBuffer> replay_buffer, double gamma, torch::Device device )
     {
         if ( !replay_buffer )
             return;
@@ -741,8 +740,6 @@ namespace NNAI
 
         loss.backward();
         optimizer.step();
-
-        out_reward += reward_batch.sum().item<float>();
 
         replay_buffer->clear();
     }
