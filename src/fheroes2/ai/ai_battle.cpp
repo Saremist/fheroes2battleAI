@@ -660,6 +660,9 @@ void AI::BattlePlanner::BattleTurn( Battle::Arena & arena, const Battle::Unit & 
         case 2:
             plannedActions = NNAI::RandomPlanTurn( arena, currentUnit );
             break;
+        case 3:
+            plannedActions = NNAI::NeuralPlanTurn( arena, currentUnit );
+            break;
         default:
             std::cout << "Unknown enemy type: " << NNAI::enemyType << ", fallback to default planning" << std::endl;
             plannedActions = planUnitTurn( arena, currentUnit ); // fallback

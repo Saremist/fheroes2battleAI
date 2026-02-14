@@ -598,8 +598,15 @@ void Battle::Arena::Turns()
             NNAI::initial_game_state_red.to( NNAI::device );
         }
 
+        if ( ( NNAI::isTraining || NNAI::isRunningExperiments )
+             && _lastActiveUnitArmyColor == -1 ) { // randomise initial army color for the first turn to avoid bias in training data
+            _lastActiveUnitArmyColor = ( rand() % 2 ? _army1->GetColor() : _army2->GetColor() );
+            // std::cout << "#951427 First unit color: " << ( _lastActiveUnitArmyColor == _army1->GetColor() ? "Red" : "Blue" ) << std::endl;
+        }
+
         while ( BattleValid() ) {
             // We can get the nullptr here if there are no units left waiting for their turn
+
             _currentUnit = GetCurrentUnit( *_army1, *_army2, GetOppositeColor( _lastActiveUnitArmyColor ) );
             if ( _orderOfUnits ) {
                 // Add unit to the history

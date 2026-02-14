@@ -42,6 +42,7 @@ namespace NNAI
     bool isTraining = true;
     bool skipDebugLog = true;
     bool isRunningExperiments = true;
+    int episodesPerSeries = 500;
 
     bool StateInitialized = false;
 
@@ -85,6 +86,20 @@ namespace NNAI
             batch.push_back( buffer_[dist( rng_ )] );
         }
         return batch;
+    }
+
+    bool ReplayBuffer::propagate_rewards_back( double reward, std::size_t n )
+    {
+        if ( buffer_.empty() )
+            return false;
+
+        n = std::min( n, buffer_.size() );
+
+        for ( std::size_t i = 1; i < n; ++i ) {
+            buffer_[buffer_.size() - 1 - i].reward = reward / ( i + 1 );
+        }
+
+        return true;
     }
 
     bool ReplayBuffer::set_last_reward( double reward )

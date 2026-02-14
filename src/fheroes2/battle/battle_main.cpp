@@ -347,13 +347,10 @@ Battle::Result Battle::ExecuteBattleLoop( Army & army1, Army & army2, int32_t ma
 
         result = arena.GetResult();
 
-        if ( NNAI::isTraining )
-            // std::cout << result << std::endl;
-
-            if ( showBattle ) {
-                const bool clearMessageLog = ( result.army1 & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.army2 & ( RESULT_RETREAT | RESULT_SURRENDER ) );
-                arena.FadeArena( clearMessageLog );
-            }
+        if ( showBattle ) {
+            const bool clearMessageLog = ( result.army1 & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.army2 & ( RESULT_RETREAT | RESULT_SURRENDER ) );
+            arena.FadeArena( clearMessageLog );
+        }
 
         if ( !NNAI::isTraining && isHumanBattle && arena.DialogBattleSummary( result, {}, !showBattle ) ) {
             showBattle = true;

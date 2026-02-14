@@ -390,44 +390,41 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         // ===== TRAINING LOOP: SERIES / EPISODES =====
         try {
-            int blue_start = NNAI::isRunningExperiments ? 1 : -1;
-            int blue_end = NNAI::isRunningExperiments ? 5 : -1;
+            int blue_start = isRunningExperiments ? 1 : -1;
+            int blue_end = isRunningExperiments ? 5 : -1;
 
-            int red_start = NNAI::isRunningExperiments ? 1 : -1;
-            int red_end = NNAI::isRunningExperiments ? 5 : -1;
+            int red_start = isRunningExperiments ? 1 : -1;
+            int red_end = isRunningExperiments ? 5 : -1;
 
             for ( int blue = blue_start; blue <= blue_end; ++blue ) {
                 for ( int red = red_start; red <= red_end; ++red ) {
-                    NNAI::blue_monster_count = blue;
-                    NNAI::red_monster_count = red;
+                    blue_monster_count = blue;
+                    red_monster_count = red;
                     // ======SERIES========
                     for ( int64_t series = 0; series < num_series; ++series ) {
                         auto series_start = std::chrono::steady_clock::now();
 
                         float series_total_reward = 0.0f;
 
-                        float blueTotalReward = 0.0f;
-                        float redTotalReward = 0.0f;
                         int blue_wins = 0;
                         int red_wins = 0;
 
                         // ---- Play episodes in this series ----
                         for ( int64_t ep = 0; ep < episodes_per_series; ++ep ) {
                             // Play one full game (self-play)
-                            float game_reward = 0.0f;
 
-                            NNAI::trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
+                            trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
 
                             double _blueReward = g_replay_buffer_blue->get_last_reward();
                             double _redReward = g_replay_buffer_red->get_last_reward();
 
-                            blueTotalReward += _blueReward;
-                            redTotalReward += _redReward;
+                            series_total_reward += _blueReward;
+                            series_total_reward += _redReward;
 
                             if ( _blueReward > _redReward ) {
                                 ++blue_wins;
                             }
-                            else {
+                            else if ( _blueReward < _redReward ) {
                                 ++red_wins;
                             }
 
@@ -457,9 +454,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                                     }
                                 }
                             }
-
-                            // accumulate per-episode totals
-                            series_total_reward += game_reward;
                         }
 
                         if ( allowTraining ) {
@@ -483,11 +477,12 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                         std::string msg = "Series " + std::to_string( series + 1 ) + "/" + std::to_string( num_series ) + " (" + std::to_string( pct ) + "%)"
                                           + " | Time: " + std::to_string( d.count() ) + "s" + " | Episodes: " + std::to_string( episodes_per_series )
                                           + " | Avg Reward: " + std::to_string( series_total_reward / (double)episodes_per_series )
-                                          + " | Blue/Red win percantage: " + std::to_string( ( (double)( blue_wins ) / (double)( episodes_per_series ) ) * 100 );
-                        if ( NNAI::isRunningExperiments ) {
-                            msg += " | Blue Troops: " + std::to_string( NNAI::blue_monster_count ) + " | Red Troops: " + std::to_string( NNAI::red_monster_count );
+                                          + " | Blue win percantage: " + ( std::to_string( ( (double)( blue_wins ) / episodesPerSeries ) * 100 ) )
+                                          + " | Red win percantage: " + ( std::to_string( ( (double)( red_wins ) / episodesPerSeries ) * 100 ) );
+                        if ( isRunningExperiments ) {
+                            msg += " | Blue Troops: " + std::to_string( blue_monster_count ) + " | Red Troops: " + std::to_string( red_monster_count );
                             msg += " | Enemy Type: ";
-                            switch ( NNAI::enemyType ) {
+                            switch ( enemyType ) {
                             case -1:
                                 msg += "NNAI Enemy";
                                 break;
@@ -499,6 +494,9 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                                 break;
                             case 2:
                                 msg += "Random Enemy";
+                                break;
+                            case 3:
+                                msg += "NNAI Enemy";
                                 break;
                             default:
                                 msg += "Unknown Enemy Type";
@@ -667,7 +665,8 @@ int main( int argc, char ** argv )
         std::cout << "0 -> Default Enemy" << std::endl;
         std::cout << "1 -> Agressive Enemy" << std::endl;
         std::cout << "2 -> Random Enemy" << std::endl;
-        while ( !( enemy_choice_input == '0' || enemy_choice_input == '1' || enemy_choice_input == '2' ) ) {
+        std::cout << "3 -> NNAI Enemy" << std::endl;
+        while ( !( enemy_choice_input == '0' || enemy_choice_input == '1' || enemy_choice_input == '2' || enemy_choice_input == '3' ) ) {
             std::cout << "ENEMY: ";
             std::cin >> enemy_choice_input;
         }
@@ -687,12 +686,18 @@ int main( int argc, char ** argv )
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
 
+    NNAI::episodesPerSeries = 100;
+    if ( NNAI::isRunningExperiments ) {
+        NNAI::episodesPerSeries = 500;
+    }
+
     if ( NNAI::isTraining ) {
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
         int numSeries = 100;
-        if ( NNAI::isRunningExperiments )
+        if ( NNAI::isRunningExperiments ) {
             numSeries = 1;
-        return NNAI::training_main( argc, argv, /*series = */ numSeries, 0.0005, NNAI::device, /*episodes per series = */ 100 );
+        }
+        return NNAI::training_main( argc, argv, /*series = */ numSeries, 0.0005, NNAI::device, /*episodes per series = */ NNAI::episodesPerSeries );
     }
 
     // Initialize Q-models and per-color replay buffers

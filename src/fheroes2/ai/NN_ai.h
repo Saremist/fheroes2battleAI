@@ -25,11 +25,11 @@ namespace NNAI
 {
 
     // ---- Configuration constants ----
-    const int INPUT_SIZE = 10 * 10; // Size of the input feature vector feature count * troop count
-    const int ACTION_SIZE = 99 + 2; // Number of discrete actions tiels on board + 2 actions to select //+ 5 enemies to attack
-    const int HIDDEN_SIZE = 256; // Hidden layer size for the Q-network
+    const int INPUT_SIZE = 7 * 10; // Size of the input feature vector feature count * troop count
+    const int ACTION_SIZE = 99 + 1; // Number of discrete actions tiels on board + skip
+    const int HIDDEN_SIZE = 128 * 4; // Hidden layer size for the Q-network
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
-    const size_t REPLAY_BUFFER_CAPACITY = 100000; // Experience replay capacity
+    const size_t REPLAY_BUFFER_CAPACITY = 10000; // Experience replay capacity
     const double GAMMA = 0.99; // Discount factor
     const double TAU = 1e-3; // For soft update of target network (if used)
     const double EPS_START = 1.0; // Initial epsilon for epsilon-greedy
@@ -120,6 +120,7 @@ namespace NNAI
 
         double get_last_reward() const;
         bool set_last_reward( double reward );
+        bool ReplayBuffer::propagate_rewards_back( double reward, std::size_t n );
         void clear();
 
     private:
@@ -150,6 +151,8 @@ namespace NNAI
     extern bool isTraining;
     extern bool skipDebugLog;
     extern bool isRunningExperiments;
+
+    extern int episodesPerSeries;
 
     extern bool StateInitialized;
 
