@@ -413,6 +413,10 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                     for ( int64_t series = 0; series < num_series; ++series ) {
                         auto series_start = std::chrono::steady_clock::now();
 
+                        // const auto & model_set = model_sets[rand() % model_sets.size()]; // randomly pick a model set for this series
+                        // const std::string & model_path_blue = model_set.first;
+                        // const std::string & model_path_red = model_set.second;
+
                         float series_total_reward = 0.0f;
 
                         int blue_wins = 0;
@@ -456,7 +460,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                                 }
                             }
                         }
-
                         if ( allowTraining ) {
                             // ---- Soft-update after series completes ----
                             for ( auto & me : models ) {
@@ -474,7 +477,6 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                                 }
                             }
                         }
-
                         // ---- Logging for this series ----
                         auto series_end = std::chrono::steady_clock::now();
                         std::chrono::duration<double> d = series_end - series_start;
@@ -701,7 +703,6 @@ int main( int argc, char ** argv )
     if ( NNAI::isRunningExperiments ) {
         NNAI::episodesPerSeries = 500;
     }
-
     if ( NNAI::isTraining ) {
         AI::BattlePlanner::MAX_TURNS_WITHOUT_DEATHS = 5; // Set the max turns without deaths for the planner
         int numSeries = 100;

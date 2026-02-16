@@ -144,8 +144,6 @@ namespace NNAI
     // per-model buffers (choose one approach)
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red;
-    // extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged;
-    // extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged;
 
     // Training state
     extern bool isTraining;

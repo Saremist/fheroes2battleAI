@@ -169,6 +169,8 @@ namespace NNAI
                     std::cerr << "Q-model file does not exist at " << model_path << ". Creating default model..." << std::endl;
                 create_and_save_qmodel( model_path );
             }
+
+            // Load the main model
             modelPtr = std::make_shared<QNetwork>( INPUT_SIZE, HIDDEN_SIZE, ACTION_SIZE, NUM_HIDDEN_LAYERS );
             torch::load( *modelPtr, model_path );
             modelPtr->get()->to( device );
@@ -751,7 +753,6 @@ namespace NNAI
         case 0x04: // RED
             return false;
         }
-        return true;
     }
 
     int getClosestNeighborIndex( const Battle::Unit & unit, const int32_t targetIndex, Battle::Arena & arena )
