@@ -130,16 +130,16 @@ namespace NNAI
     };
 
     // ---- Per-color per type models & shared training state ----
-    extern std::shared_ptr<QNetwork> g_qmodel_blue;
-    extern std::shared_ptr<QNetwork> g_qmodel_red;
-    // extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged;
-    // extern std::shared_ptr<QNetwork> g_qmodel_red_ranged;
+    extern std::shared_ptr<QNetwork> g_qmodel_blue_A;
+    extern std::shared_ptr<QNetwork> g_qmodel_blue_B;
+    extern std::shared_ptr<QNetwork> g_qmodel_red_A;
+    extern std::shared_ptr<QNetwork> g_qmodel_red_B;
 
     // Optionally a target network per color (for stability)
-    extern std::shared_ptr<QNetwork> g_target_blue;
-    extern std::shared_ptr<QNetwork> g_target_red;
-    // extern std::shared_ptr<QNetwork> g_target_blue_ranged;
-    // extern std::shared_ptr<QNetwork> g_target_red_ranged;
+    extern std::shared_ptr<QNetwork> g_target_blue_A;
+    extern std::shared_ptr<QNetwork> g_target_blue_B;
+    extern std::shared_ptr<QNetwork> g_target_red_A;
+    extern std::shared_ptr<QNetwork> g_target_red_B;
 
     // per-model buffers (choose one approach)
     extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
@@ -162,19 +162,16 @@ namespace NNAI
     // ---- Utility / API ----
 
     // Model lifecycle
-    void initialize_qmodels( torch::Device dev = torch::kCPU );
+    void initialize_qmodels( torch::Device dev );
     void create_and_save_qmodel( const std::string & model_path ); // creates a fresh model and saves to path
     void save_qmodel( const QNetwork & model, const std::string & model_path );
-    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, const std::string & model_path );
+    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, std::shared_ptr<QNetwork> & targetPtr, const std::string & model_path );
 
     std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged );
 
     // Epsilon-greedy action selection
     // state_tensor must be a 1D tensor shape [INPUT_SIZE] or 2D [1,INPUT_SIZE]
     int selectActionEpsilonGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor );
-
-    // Deterministic choice (argmax)
-    int selectActionGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor );
 
     // Convert arena & unit -> state tensor
     torch::Tensor prepareStateTensor( const Battle::Arena & arena, const Battle::Unit & currentUnit );
@@ -222,8 +219,11 @@ namespace NNAI
 
     inline std::pair<int, int> getXYCoordinates( const Battle::Unit & unit )
     {
-        int x = ( unit.GetHeadIndex() / Battle::Board::widthInCells );
-        int y = ( unit.GetHeadIndex() % Battle::Board::widthInCells );
+        const int width = Battle::Board::widthInCells;
+
+        int x = unit.GetHeadIndex() / width;
+        int y = unit.GetHeadIndex() % width;
+
         return { x, y };
     }
 

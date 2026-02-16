@@ -22,26 +22,25 @@ namespace NNAI
 {
     // --- Global Q-networks (one per color) ---
     // ---- Per-color per type models & shared training state ----
-    extern std::shared_ptr<QNetwork> g_qmodel_blue = nullptr;
-    extern std::shared_ptr<QNetwork> g_qmodel_red = nullptr;
-    extern std::shared_ptr<QNetwork> g_qmodel_blue_ranged = nullptr;
-    extern std::shared_ptr<QNetwork> g_qmodel_red_ranged = nullptr;
+    std::shared_ptr<QNetwork> g_qmodel_blue_A = nullptr;
+    std::shared_ptr<QNetwork> g_qmodel_blue_B = nullptr;
+    std::shared_ptr<QNetwork> g_qmodel_red_A = nullptr;
+    std::shared_ptr<QNetwork> g_qmodel_red_B = nullptr;
 
     // Optionally a target network per color (for stability )
-    extern std::shared_ptr<QNetwork> g_target_blue = nullptr;
-    extern std::shared_ptr<QNetwork> g_target_red = nullptr;
-    extern std::shared_ptr<QNetwork> g_target_blue_ranged = nullptr;
-    extern std::shared_ptr<QNetwork> g_target_red_ranged = nullptr;
+    std::shared_ptr<QNetwork> g_target_blue_A = nullptr;
+    std::shared_ptr<QNetwork> g_target_blue_B = nullptr;
+    std::shared_ptr<QNetwork> g_target_red_A = nullptr;
+    std::shared_ptr<QNetwork> g_target_red_B = nullptr;
 
     // per-model buffers (choose one approach)
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_ranged = nullptr;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_ranged = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
 
     bool isTraining = true;
     bool skipDebugLog = true;
     bool isRunningExperiments = true;
+
     int episodesPerSeries = 500;
 
     bool StateInitialized = false;
@@ -161,7 +160,7 @@ namespace NNAI
         }
     }
 
-    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, const std::string & model_path )
+    void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, std::shared_ptr<QNetwork> & targetPtr, const std::string & model_path )
     {
         namespace fs = std::filesystem;
         try {
@@ -173,12 +172,21 @@ namespace NNAI
             modelPtr = std::make_shared<QNetwork>( INPUT_SIZE, HIDDEN_SIZE, ACTION_SIZE, NUM_HIDDEN_LAYERS );
             torch::load( *modelPtr, model_path );
             modelPtr->get()->to( device );
+
+            // if ( !skipDebugLog )
+            std::cout << "Loaded Q-model from " << model_path << std::endl;
+
+            // Create and initialize the target network
+            targetPtr = std::make_shared<QNetwork>( *modelPtr );
+            targetPtr->get()->to( device );
+
             if ( !skipDebugLog )
-                std::cout << "Loaded Q-model from " << model_path << std::endl;
+                std::cout << "Initialized target network for " << model_path << std::endl;
         }
         catch ( const std::exception & e ) {
             std::cerr << "Error loading Q-model: " << e.what() << std::endl;
             modelPtr = nullptr;
+            targetPtr = nullptr;
         }
     }
 
@@ -188,80 +196,20 @@ namespace NNAI
         device = dev;
         g_replay_buffer_blue = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
         g_replay_buffer_red = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
-        // g_replay_buffer_blue_ranged = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
-        // g_replay_buffer_red_ranged = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
-
-        load_qmodel( g_qmodel_blue, "qmodel_blue.pt" );
-        load_qmodel( g_qmodel_red, "qmodel_red.pt" );
-        // load_qmodel( g_qmodel_blue_ranged, "qmodel_blue_ranged.pt" );
-        // load_qmodel( g_qmodel_red_ranged, "qmodel_red_ranged.pt" );
-
-        if ( g_qmodel_blue ) {
-            g_target_blue = std::make_shared<QNetwork>( *g_qmodel_blue );
-            g_target_blue->get()->to( device );
-        }
-        if ( g_qmodel_red ) {
-            g_target_red = std::make_shared<QNetwork>( *g_qmodel_red );
-            g_target_red->get()->to( device );
-        }
-        /*       if ( g_qmodel_blue_ranged ) {
-                   g_target_blue_ranged = std::make_shared<QNetwork>( *g_qmodel_blue_ranged );
-                   g_target_blue_ranged->get()->to( device );
-               }
-               if ( g_qmodel_red_ranged ) {
-                   g_target_red_ranged = std::make_shared<QNetwork>( *g_qmodel_red_ranged );
-                   g_target_red_ranged->get()->to( device );
-               }*/
+        // Load models and their targets
+        load_qmodel( g_qmodel_blue_A, g_target_blue_A, "qmodel_blue_A.pt" );
+        // load_qmodel( g_qmodel_blue_B, g_target_blue_B, "qmodel_blue_B.pt" );
+        load_qmodel( g_qmodel_red_A, g_target_red_A, "qmodel_red_A.pt" );
+        // load_qmodel( g_qmodel_red_B, g_target_red_B, "qmodel_red_B.pt" );
     }
 
-    // --- Action selection ---
-    int selectActionGreedy( std::shared_ptr<QNetwork> model, torch::Tensor state_tensor )
-    {
-        if ( !model )
-            return 0;
-
-        // Ensure shape [1, INPUT_SIZE]
-        if ( state_tensor.dim() == 1 )
-            state_tensor = state_tensor.unsqueeze( 0 );
-
-        state_tensor = state_tensor.to( device ).to( torch::kFloat32 );
-
-        model->get()->eval();
-        torch::NoGradGuard no_grad;
-
-        // Q-values: [1, ACTION_SIZE]
-        torch::Tensor qvals = model->get()->forward( state_tensor ).squeeze( 0 );
-
-        float max_q = qvals.max().item<float>();
-        torch::Tensor best_actions = torch::nonzero( qvals == max_q ).squeeze( 1 );
-
-        // Randomly pick one of them
-        int num_best = best_actions.size( 0 );
-
-        if ( num_best == 1 )
-            return best_actions.item<int>();
-
-        static thread_local std::mt19937 rng{ std::random_device{}() };
-        std::uniform_int_distribution<int> dist( 0, num_best - 1 );
-
-        int chosen = best_actions[dist( rng )].item<int>();
-        return chosen;
-    }
-
-    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged )
+    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged ) // TODO MW
     {
         switch ( color ) {
         case 0x01: // BLUE
-                   // if ( isRanged )
-                   //    return g_qmodel_blue_ranged;
-                   // else
-            return g_qmodel_blue;
+            return g_qmodel_blue_A;
         case 0x04: // RED
-                   // if ( isRanged )
-                   //    return g_qmodel_red_ranged;
-                   // else
-            return g_qmodel_red;
-
+            return g_qmodel_red_A;
         default:
             std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
             return nullptr;
@@ -282,12 +230,9 @@ namespace NNAI
         features.push_back( static_cast<float>( coords.first ) );
         features.push_back( static_cast<float>( coords.second ) );
 
-        features.push_back( normalize( unit.GetHitPoints() * unit.GetCount(), 0, currentUnitTotalHits ) );
-        features.push_back( normalize( unit.GetSpeed( false, true ), 0, currentunit.GetSpeed( false, true ) ) );
-        features.push_back( normalize( arena.GetBoard()->GetDistance( currentunit.GetPosition(), unit.GetPosition() ), 0, currentunit.GetSpeed( false, true ) ) );
         features.push_back( normalize( unit.GetAttack(), 0, currentunit.GetAttack() ) );
         features.push_back( normalize( unit.GetDefense(), 0, currentunit.GetDefense() ) );
-        features.push_back( unit.isArchers() ? 1.0f : 0.0f );
+        features.push_back( ( unit.isArchers() && !unit.isHandFighting() ) ? 1.0f : 0.0f );
         features.push_back( unit.GetColor() == arena.GetArmy1Color() ? 1.0f : 0.0f );
 
         // std::cout << features << std::endl;
@@ -390,6 +335,68 @@ namespace NNAI
         }
     }
 
+    Battle::Actions actionIndexToGameActions( int actionTargetIndex, Battle::Arena & arena, const Battle::Unit & currentUnit )
+    {
+        Battle::Actions actions;
+        int uid = static_cast<int>( currentUnit.GetUID() );
+
+        if ( actionTargetIndex < 0 ) {
+            actions.emplace_back( Battle::Command::SKIP, uid );
+            std::cout << " #4352 FORCING SKIP ERRORR!!!" << std::endl;
+            return actions;
+        }
+        // int targetIndex = action_index;
+        const int maxIndex = Battle::Board::widthInCells * Battle::Board::heightInCells - 1;
+
+        if ( actionTargetIndex > maxIndex ) {
+            actions.emplace_back( Battle::Command::SKIP, uid );
+            return actions;
+        }
+
+        const auto * cell = arena.GetBoard()->GetCell( actionTargetIndex );
+
+        // If unit exists at target -> ATTACK
+        int targetUnitUID = -1;
+        if ( cell ) {
+            const auto * unit = cell->GetUnit();
+            if ( unit )
+                targetUnitUID = unit->GetUID();
+        }
+
+        int currentPositionIndex = currentUnit.GetPosition().GetHead()->GetIndex();
+        // If there is a target unit, compute direction
+
+        if ( targetUnitUID != -1 ) {
+            int attackDirection = -1; // start with archery
+            int moveTargetIndex = -1;
+
+            if ( currentUnit.GetShots() <= 0 || currentUnit.isHandFighting() ) {
+                moveTargetIndex = getClosestNeighborIndex( currentUnit, actionTargetIndex /*targert position*/, arena );
+                attackDirection = Battle::Board::GetDirection( moveTargetIndex, actionTargetIndex );
+            }
+
+            // Validate attack parameters quickly
+            if ( CheckAttackParameters( &currentUnit, ( cell ? cell->GetUnit() : nullptr ), moveTargetIndex, actionTargetIndex, attackDirection ) ) {
+                actions.emplace_back( Battle::Command::ATTACK, uid, targetUnitUID, moveTargetIndex, actionTargetIndex, attackDirection );
+                return actions;
+            }
+            // If invalid attack, fallthrough to attempt move
+        }
+        int nextMoveIndex = actionTargetIndex;
+
+        while ( nextMoveIndex != currentPositionIndex ) {
+            if ( CheckMoveParameters( &currentUnit, nextMoveIndex ) ) {
+                actions.emplace_back( Battle::Command::MOVE, uid, nextMoveIndex );
+                return actions;
+            }
+            nextMoveIndex = getClosestNeighborIndex( currentUnit, nextMoveIndex, arena );
+        }
+
+        // As fallback SKIP
+        actions.emplace_back( Battle::Command::SKIP, uid );
+        return actions;
+    }
+
     Battle::Actions NeuralPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         // Choose model by color
@@ -397,9 +404,7 @@ namespace NNAI
 
         // If no NN model available, fallback to SKIP to avoid crashes.
         if ( !model ) {
-            if ( !skipDebugLog ) {
-                std::cerr << "planUnitTurn: no Q-model for color " << currentUnit.GetColor() << " — SKIP\n";
-            }
+            std::cerr << "planUnitTurn: no Q-model for color " << currentUnit.GetColor() << " — SKIP\n";
             Battle::Actions actions;
             actions.emplace_back( Battle::Command::SKIP, static_cast<int>( currentUnit.GetUID() ) );
             std::cout << "FORCING SKIP ERRORR!!!" << std::endl;
@@ -429,7 +434,60 @@ namespace NNAI
 
     Battle::Actions AgresivePlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
-        return NeuralPlanTurn( arena, currentUnit );
+        Battle::Actions actions;
+        std::vector<const Battle::Unit *> enemies;
+        for ( const Battle::Unit * unit : arena.getEnemyForce( currentUnit.GetColor() ) ) {
+            if ( unit && unit->GetColor() != currentUnit.GetColor() ) {
+                enemies.push_back( unit );
+            }
+        }
+        // prefer weakest enemy
+        std::sort( enemies.begin(), enemies.end(), []( const Battle::Unit * a, const Battle::Unit * b ) { return a->GetHitPoints() < b->GetHitPoints(); } );
+
+        for ( const Battle::Unit * enemy : enemies ) {
+            int enemyCell = enemy->GetPosition().GetHead()->GetIndex();
+
+            int positionNum = -1;
+            int attackDirection = -1;
+
+            if ( currentUnit.GetShots() <= 0 || currentUnit.isHandFighting() ) {
+                positionNum = getClosestNeighborIndex( currentUnit, enemyCell, arena );
+                attackDirection = Battle::Board::GetDirection( positionNum, enemyCell );
+            }
+
+            if ( CheckAttackParameters( &currentUnit, enemy, positionNum, enemyCell, attackDirection ) ) {
+                actions.emplace_back( Battle::Command::ATTACK, currentUnit.GetUID(), enemy->GetUID(), positionNum, enemyCell, attackDirection );
+                return actions;
+            }
+        }
+        const Battle::Unit * closestEnemy = nullptr;
+        int bestDistance = INT_MAX;
+
+        for ( const Battle::Unit * enemy : enemies ) {
+            int dist = Battle::Board::GetDistance( currentUnit.GetPosition().GetHead()->GetIndex(), enemy->GetPosition().GetHead()->GetIndex() );
+
+            if ( dist < bestDistance ) {
+                bestDistance = dist;
+                closestEnemy = enemy;
+            }
+        }
+
+        if ( closestEnemy ) {
+            int targetCell = closestEnemy->GetPosition().GetHead()->GetIndex();
+            int moveCell = -1;
+            moveCell = getClosestNeighborIndex( currentUnit, targetCell, arena );
+            int currentUnitCellIndex = currentUnit.GetPosition().GetHead()->GetIndex();
+
+            while ( moveCell != currentUnitCellIndex ) {
+                if ( CheckMoveParameters( &currentUnit, moveCell ) ) {
+                    actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), moveCell );
+                    return actions;
+                }
+                moveCell = getClosestNeighborIndex( currentUnit, moveCell, arena );
+            }
+        }
+        actions.emplace_back( Battle::Command::SKIP, currentUnit.GetUID() );
+        return actions;
     }
 
     Battle::Actions RandomPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
@@ -457,7 +515,7 @@ namespace NNAI
             else if ( targetUnitUID != -1 ) { // Do archery first
                 int positionNum = -1;
                 int attackDirection = -1;
-                if ( currentUnit.GetShots() <= 0 ) { // Swap to  mele if archery not available
+                if ( currentUnit.GetShots() <= 0 || currentUnit.isHandFighting() ) { // Swap to  mele if archery not available
                     positionNum = getClosestNeighborIndex( currentUnit, targetCellIndex, arena );
                     attackDirection = Battle::Board::GetDirection( positionNum, targetCellIndex );
                 }
@@ -481,86 +539,6 @@ namespace NNAI
         }
     }
 
-    Battle::Actions actionIndexToGameActions( int action_index, Battle::Arena & arena, const Battle::Unit & currentUnit )
-    {
-        Battle::Actions actions;
-        int uid = static_cast<int>( currentUnit.GetUID() );
-
-        if ( action_index <= 0 ) {
-            actions.emplace_back( Battle::Command::SKIP, uid );
-            return actions;
-        }
-
-        int targetIndex = action_index;
-        // Clamp to valid board indices
-        const int maxIndex = Battle::Board::widthInCells * Battle::Board::heightInCells - 1;
-        if ( targetIndex < 0 )
-            targetIndex = 0;
-        if ( targetIndex > maxIndex ) {
-            int actionIndex = targetIndex - maxIndex - 1;
-
-            if ( actionIndex == 0 ) {
-                actions.splice( actions.end(), AttackClosestEnemy( arena, currentUnit ) );
-                return actions;
-            }
-            else if ( actionIndex == 1 ) {
-                actions.splice( actions.end(), DefendClosestAlly( arena, currentUnit ) );
-                return actions;
-            }
-            else {
-                actions.emplace_back( Battle::Command::SKIP, uid );
-            }
-
-            /*int enemyIndex = targetIndex - maxIndex - 1;
-            const Battle::Units enemies( arena.getEnemyForce( arena.GetCurrentColor() ).getUnits(), Battle::Units::REMOVE_INVALID_UNITS_AND_SPECIFIED_UNIT,
-                                         &currentUnit );M
-            if ( enemies.size() > enemyIndex ) {
-                targetIndex = enemies[enemyIndex]->GetHeadIndex();
-            }
-            else {
-                actions.emplace_back( Battle::Command::SKIP, uid );
-            }*/
-        }
-
-        // If unit exists at target -> ATTACK
-        const auto * cell = arena.GetBoard()->GetCell( targetIndex );
-        int targetUnitUID = -1;
-        if ( cell ) {
-            const auto * unit = cell->GetUnit();
-            if ( unit )
-                targetUnitUID = unit->GetUID();
-        }
-
-        int positionNum = currentUnit.GetPosition().GetHead()->GetIndex();
-        int attackDirection = -1;
-        // If there is a target unit, compute direction
-        if ( targetUnitUID != -1 ) {
-            int attackTargetPosition = targetIndex;
-            positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
-            attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
-            if ( currentUnit.GetShots() > 0 ) {
-                attackDirection = -1; // swap to archery if available
-                positionNum = -1;
-            }
-            // Validate attack parameters quickly
-            if ( CheckAttackParameters( &currentUnit, ( cell ? cell->GetUnit() : nullptr ), positionNum, attackTargetPosition, attackDirection ) ) {
-                actions.emplace_back( Battle::Command::ATTACK, uid, targetUnitUID, positionNum, attackTargetPosition, attackDirection );
-                return actions;
-            }
-            // If invalid attack, fallthrough to attempt move
-        }
-
-        // Attempt move to the target cell (validate)
-        if ( CheckMoveParameters( &currentUnit, targetIndex ) ) {
-            actions.emplace_back( Battle::Command::MOVE, currentUnit.GetUID(), targetIndex );
-            return actions;
-        }
-
-        // As fallback SKIP
-        actions.emplace_back( Battle::Command::SKIP, uid );
-        return actions;
-    }
-
     Battle::Actions AttackClosestEnemy( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         Battle::Actions actions;
@@ -581,7 +559,7 @@ namespace NNAI
             int attackTargetPosition = closestEnemy->GetHeadIndex();
             int positionNum = getClosestNeighborIndex( currentUnit, attackTargetPosition, arena );
             int attackDirection = Battle::Board::GetDirection( positionNum, attackTargetPosition );
-            if ( currentUnit.GetShots() > 0 ) {
+            if ( currentUnit.GetShots() > 0 && !currentUnit.isHandFighting() ) {
                 attackDirection = -1; // swap to archery if available
                 positionNum = -1;
             }
@@ -767,13 +745,11 @@ namespace NNAI
 
     bool isNNControlled( int color )
     {
-        if ( isRunningExperiments ) {
-            switch ( color ) {
-            case 0x01: // BLUE
-                return true;
-            case 0x04: // RED
-                return false;
-            }
+        switch ( color ) {
+        case 0x01: // BLUE
+            return true;
+        case 0x04: // RED
+            return false;
         }
         return true;
     }
@@ -784,10 +760,12 @@ namespace NNAI
         uint32_t closestDistance = 9999;
         for ( Battle::CellDirection dir = Battle::TOP_LEFT; dir < Battle::CENTER; ++dir ) {
             int32_t neighborIndex = Battle::Board::GetIndexDirection( targetIndex, dir );
-            uint32_t distance = arena.GetBoard()->GetDistance( unit.GetPosition(), neighborIndex );
-            if ( distance < closestDistance ) {
-                closestDistance = distance;
-                closestIndex = neighborIndex;
+            if ( neighborIndex >= 0 && neighborIndex <= 98 ) {
+                uint32_t distance = arena.GetBoard()->GetDistance( unit.GetPosition(), neighborIndex );
+                if ( distance < closestDistance ) {
+                    closestDistance = distance;
+                    closestIndex = neighborIndex;
+                }
             }
         }
         return closestIndex;

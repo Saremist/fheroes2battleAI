@@ -338,49 +338,51 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         const CursorRestorer cursorRestorer( true, Cursor::POINTER );
 
-        const bool allowTraining = !NNAI::isRunningExperiments;
+        const bool allowTraining = !isRunningExperiments;
 
         double total_elapsed_seconds = 0.0;
 
         std::stringstream log_buffer; // Buffer to hold log messages
 
         // Initialize Q-models and per-color replay buffers
-        initialize_qmodels( device );
+        // initialize_qmodels( device );
 
         // Build model entries: include color id so we can pick buffer easily
         struct ModelEntry
         {
             std::shared_ptr<QNetwork> model;
             std::shared_ptr<QNetwork> target;
+            std::unique_ptr<torch::optim::Optimizer> optimizer;
+            std::shared_ptr<ReplayBuffer> replay_buffer;
             std::string name;
             int color; // color id used in game (e.g., 0x01 = blue, 0x04 = red)
         };
 
         std::vector<ModelEntry> models;
 
-        if ( g_qmodel_blue )
-            models.push_back( { g_qmodel_blue, g_target_blue, "blue", 0x01 } );
-        if ( g_qmodel_red )
-            models.push_back( { g_qmodel_red, g_target_red, "red", 0x04 } );
+        initialize_qmodels( device );
+
+        if ( g_qmodel_blue_A )
+            models.push_back( { g_qmodel_blue_A, g_target_blue_A, nullptr, g_replay_buffer_blue, "blue_A", 0x01 } );
+
+        if ( g_qmodel_red_A )
+            models.push_back( { g_qmodel_red_A, g_target_red_A, nullptr, g_replay_buffer_red, "red_A", 0x04 } );
 
         if ( models.empty() ) {
             std::cerr << "No Q-models loaded. Aborting training." << std::endl;
             return EXIT_FAILURE;
         }
 
-        // Create one optimizer per model (wrap new Adam into unique_ptr<Optimizer>)
-        std::vector<std::pair<std::shared_ptr<QNetwork>, std::unique_ptr<torch::optim::Optimizer>>> optimizers;
         for ( auto & me : models ) {
             if ( allowTraining ) {
                 me.model->get()->train();
-                auto * adam_ptr = new torch::optim::Adam( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
-                optimizers.emplace_back( me.model, std::unique_ptr<torch::optim::Optimizer>( adam_ptr ) );
+
+                me.optimizer = std::make_unique<torch::optim::Adam>( me.model->get()->parameters(), torch::optim::AdamOptions( learning_rate ) );
             }
             else {
-                me.model->get()->eval(); // inference-only
-                for ( auto & p : me.model->get()->parameters() ) {
-                    p.requires_grad_( false ); // hard freeze
-                }
+                me.model->get()->eval();
+                for ( auto & p : me.model->get()->parameters() )
+                    p.requires_grad_( false );
             }
         }
 
@@ -395,6 +397,13 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
             int red_start = isRunningExperiments ? 1 : -1;
             int red_end = isRunningExperiments ? 5 : -1;
+
+            // std::vector<std::pair<std::string, std::string>> model_sets = {
+            //     { "qmodel_blue_A.pt", "qmodel_red_A.pt" }, // AA
+            //     { "qmodel_blue_A.pt", "qmodel_red_B.pt" }, // AB
+            //     { "qmodel_blue_B.pt", "qmodel_red_A.pt" }, // BA
+            //     { "qmodel_blue_B.pt", "qmodel_red_B.pt" } // BB
+            // };
 
             for ( int blue = blue_start; blue <= blue_end; ++blue ) {
                 for ( int red = red_start; red <= red_end; ++red ) {
@@ -430,26 +439,18 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                             if ( allowTraining ) {
                                 // ---- Update Q after each game ----
-                                for ( size_t mi = 0; mi < models.size(); ++mi ) {
-                                    auto & me = models[mi];
-                                    auto & opt_pair = optimizers[mi];
-                                    auto & model_ptr = opt_pair.first;
-                                    auto & optimizer_ptr = opt_pair.second;
+                                for ( auto & me : models ) {
+                                    if ( me.model && me.optimizer && me.replay_buffer ) {
+                                        if ( me.replay_buffer->size() == 0 ) {
+                                            std::cout << "#1231222 Skipping traiing for: " << me.name << std::endl;
+                                            continue;
+                                        }
 
-                                    std::shared_ptr<ReplayBuffer> buf = nullptr;
-                                    if ( me.color == 0x01 )
-                                        // buf = me.isRanged ? g_replay_buffer_blue_ranged : g_replay_buffer_blue;
-                                        buf = g_replay_buffer_blue;
-                                    else if ( me.color == 0x04 )
-                                        // buf = me.isRanged ? g_replay_buffer_red_ranged : g_replay_buffer_red;
-                                        buf = g_replay_buffer_red;
-
-                                    if ( model_ptr && optimizer_ptr && buf ) {
                                         try {
-                                            optimize_model( *model_ptr, *optimizer_ptr, buf, GAMMA, device );
+                                            optimize_model( *me.model, *me.optimizer, me.replay_buffer, GAMMA, device );
                                         }
                                         catch ( const std::exception & ex ) {
-                                            std::cerr << "optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
+                                            std::cerr << "#0921123 optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
                                         }
                                     }
                                 }
@@ -459,11 +460,16 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                         if ( allowTraining ) {
                             // ---- Soft-update after series completes ----
                             for ( auto & me : models ) {
-                                if ( me.target && me.model ) {
+                                if ( me.model && me.optimizer && me.replay_buffer ) {
+                                    /*if ( me.replay_buffer->size() == 0 ) {
+                                        std::cout << "#1231123142 Skipping training for: " << me.name << std::endl;
+                                        continue;
+                                    }*/
                                     try {
                                         soft_update_target( *me.model, *me.target, TAU );
                                     }
-                                    catch ( ... ) {
+                                    catch ( const std::exception & ex ) {
+                                        std::cout << "#0921902 ERROR SOFTUPDATING TARGETS FOR " << me.name << ": " << ex.what() << std::endl;
                                     }
                                 }
                             }
@@ -514,7 +520,12 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                         if ( allowTraining ) {
                             for ( auto & me : models ) {
-                                save_qmodel( *me.model, "qmodel_" + me.name + ".pt" );
+                                if ( me.color == 0x01 )
+                                    // save_qmodel( *me.model, model_set.first ); // TODO MW
+                                    save_qmodel( *me.model, "qmodel_blue_A.pt" ); // TODO MW
+                                else if ( me.color == 0x04 )
+                                    // save_qmodel( *me.model, model_set.second ); // TODO MW
+                                    save_qmodel( *me.model, "qmodel_red_A.pt" ); // TODO MW
                             }
 
                             // ---- Decay epsilon here ----
