@@ -34,8 +34,12 @@ namespace NNAI
     std::shared_ptr<QNetwork> g_target_red_B = nullptr;
 
     // per-model buffers (choose one approach)
-    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue = nullptr;
-    std::shared_ptr<ReplayBuffer> g_replay_buffer_red = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_A = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_B = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_red_A = nullptr;
+    std::shared_ptr<ReplayBuffer> g_replay_buffer_red_B = nullptr;
+
+    std::string active_models_combination = "AA"; // "AA, AB, BA, BB"
 
     bool isTraining = true;
     bool skipDebugLog = true;
@@ -94,10 +98,9 @@ namespace NNAI
 
         n = std::min( n, buffer_.size() );
 
-        for ( std::size_t i = 1; i < n; ++i ) {
+        for ( std::size_t i = 0; i < n; ++i ) {
             buffer_[buffer_.size() - 1 - i].reward = reward / ( i + 1 );
         }
-
         return true;
     }
 
@@ -196,25 +199,74 @@ namespace NNAI
     void initialize_qmodels( torch::Device dev )
     {
         device = dev;
-        g_replay_buffer_blue = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
-        g_replay_buffer_red = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_blue_A = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_blue_B = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_red_A = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
+        g_replay_buffer_red_B = std::make_shared<ReplayBuffer>( REPLAY_BUFFER_CAPACITY );
         // Load models and their targets
         load_qmodel( g_qmodel_blue_A, g_target_blue_A, "qmodel_blue_A.pt" );
-        // load_qmodel( g_qmodel_blue_B, g_target_blue_B, "qmodel_blue_B.pt" );
+        load_qmodel( g_qmodel_blue_B, g_target_blue_B, "qmodel_blue_B.pt" );
         load_qmodel( g_qmodel_red_A, g_target_red_A, "qmodel_red_A.pt" );
-        // load_qmodel( g_qmodel_red_B, g_target_red_B, "qmodel_red_B.pt" );
+        load_qmodel( g_qmodel_red_B, g_target_red_B, "qmodel_red_B.pt" );
     }
 
-    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged ) // TODO MW
+    std::shared_ptr<QNetwork> getQModelByColor_AB( int color ) // TODO MW
     {
         switch ( color ) {
         case 0x01: // BLUE
-            return g_qmodel_blue_A;
+            if ( active_models_combination[0] == 'A' )
+                return g_qmodel_blue_A;
+            else if ( active_models_combination[0] == 'B' ) {
+                return g_qmodel_blue_B;
+            }
+            else {
+                std::cout << "ERROR SELECTING MODEL BY COMBINATION: " << active_models_combination << std::endl;
+                return nullptr;
+            }
         case 0x04: // RED
-            return g_qmodel_red_A;
+            if ( active_models_combination[1] == 'A' )
+                return g_qmodel_red_A;
+            else if ( active_models_combination[1] == 'B' ) {
+                return g_qmodel_red_B;
+            }
+            else {
+                std::cout << "ERROR SELECTING MODEL BY COMBINATION: " << active_models_combination << std::endl;
+                return nullptr;
+            }
         default:
             std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
             return nullptr;
+        }
+    }
+
+    int getOutRewardForColor_AB( int color )
+    {
+        switch ( color ) {
+        case 0x01: // BLUE
+            if ( active_models_combination[0] == 'A' ) {
+                return g_replay_buffer_blue_A->get_last_reward();
+            }
+            else if ( active_models_combination[0] == 'B' ) {
+                return g_replay_buffer_blue_B->get_last_reward();
+            }
+            else {
+                std::cout << "ERROR SELECTING MODEL BY COMBINATION: " << active_models_combination << std::endl;
+                return 0;
+            }
+        case 0x04: // RED
+            if ( active_models_combination[1] == 'A' ) {
+                return g_replay_buffer_red_A->get_last_reward();
+            }
+            else if ( active_models_combination[1] == 'B' ) {
+                return g_replay_buffer_red_B->get_last_reward();
+            }
+            else {
+                std::cout << "ERROR SELECTING MODEL BY COMBINATION: " << active_models_combination << std::endl;
+                return 0;
+            }
+        default:
+            std::cerr << "Warning: Unrecognized color " << color << ". Returning default model." << std::endl;
+            return 0;
         }
     }
 
@@ -402,7 +454,7 @@ namespace NNAI
     Battle::Actions NeuralPlanTurn( Battle::Arena & arena, const Battle::Unit & currentUnit )
     {
         // Choose model by color
-        std::shared_ptr<QNetwork> model = getQModelByColorAndType( currentUnit.GetColor(), bool( currentUnit.GetShots() > 0 ) );
+        std::shared_ptr<QNetwork> model = getQModelByColor_AB( currentUnit.GetColor() );
 
         // If no NN model available, fallback to SKIP to avoid crashes.
         if ( !model ) {
@@ -656,16 +708,24 @@ namespace NNAI
         e.done = done;
 
         if ( color == 0x01 ) {
-            g_replay_buffer_blue->push( e );
-            // if ( reward > 0 ) {
-            //     g_replay_buffer_red->set_last_reward( 1000.0f - reward );
-            // }
+            if ( active_models_combination[0] == 'A' ) {
+                g_replay_buffer_blue_A->push( e );
+                g_replay_buffer_blue_A->propagate_rewards_back( reward, 5 );
+            }
+            else if ( active_models_combination[0] == 'B' ) {
+                g_replay_buffer_blue_B->push( e );
+                g_replay_buffer_blue_B->propagate_rewards_back( reward, 5 );
+            }
         }
         else if ( color == 0x04 ) {
-            g_replay_buffer_red->push( e );
-            // if ( reward > 0 ) {
-            //     //g_replay_buffer_blue->set_last_reward( 1000.0f - reward );
-            // }
+            if ( active_models_combination[1] == 'A' ) {
+                g_replay_buffer_red_A->push( e );
+                g_replay_buffer_red_A->propagate_rewards_back( reward, 5 );
+            }
+            else if ( active_models_combination[1] == 'B' ) {
+                g_replay_buffer_red_B->push( e );
+                g_replay_buffer_red_B->propagate_rewards_back( reward, 5 );
+            }
         }
     }
 

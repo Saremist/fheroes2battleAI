@@ -163,7 +163,7 @@ void FillRandomTrainingTroops( Heroes * hero, int monsterCount = -1 )
 
     // int numTroops = 4; // Gives 2 to 5, centered on 3
 
-    static const int troopIDs[5] = { 7, 45, 23, 24, 31 };
+    static const int troopIDs[5] = { 7, 23, 31, 49, 41 }; // , 45, 24,
 
     for ( int i = 0; i < 5; ++i ) {
         auto troop = army.GetTroop( i );

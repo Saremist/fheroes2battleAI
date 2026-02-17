@@ -363,10 +363,16 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
         initialize_qmodels( device );
 
         if ( g_qmodel_blue_A )
-            models.push_back( { g_qmodel_blue_A, g_target_blue_A, nullptr, g_replay_buffer_blue, "blue_A", 0x01 } );
+            models.push_back( { g_qmodel_blue_A, g_target_blue_A, nullptr, g_replay_buffer_blue_A, "blue_A", 0x01 } );
 
         if ( g_qmodel_red_A )
-            models.push_back( { g_qmodel_red_A, g_target_red_A, nullptr, g_replay_buffer_red, "red_A", 0x04 } );
+            models.push_back( { g_qmodel_red_A, g_target_red_A, nullptr, g_replay_buffer_red_A, "red_A", 0x04 } );
+
+        if ( g_qmodel_blue_B )
+            models.push_back( { g_qmodel_blue_B, g_target_blue_B, nullptr, g_replay_buffer_blue_B, "blue_B", 0x01 } );
+
+        if ( g_qmodel_red_B )
+            models.push_back( { g_qmodel_red_B, g_target_red_B, nullptr, g_replay_buffer_red_B, "red_B", 0x04 } );
 
         if ( models.empty() ) {
             std::cerr << "No Q-models loaded. Aborting training." << std::endl;
@@ -388,7 +394,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
         double DynamicEPS_Decay = ( EPS_START - EPS_END ) / ( num_series * episodes_per_series );
 
-        std::cout << "DynamicEPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
+        std::cout << "Dynamic EPS_Decay was calculated to be: " << DynamicEPS_Decay << std::endl << "Start at:" << EPS_START << "End at: " << EPS_END << std::endl;
 
         // ===== TRAINING LOOP: SERIES / EPISODES =====
         try {
@@ -398,12 +404,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
             int red_start = isRunningExperiments ? 1 : -1;
             int red_end = isRunningExperiments ? 5 : -1;
 
-            // std::vector<std::pair<std::string, std::string>> model_sets = {
-            //     { "qmodel_blue_A.pt", "qmodel_red_A.pt" }, // AA
-            //     { "qmodel_blue_A.pt", "qmodel_red_B.pt" }, // AB
-            //     { "qmodel_blue_B.pt", "qmodel_red_A.pt" }, // BA
-            //     { "qmodel_blue_B.pt", "qmodel_red_B.pt" } // BB
-            // };
+            std::vector<std::string> model_sets = { "AA", "AB", "BA", "BB" };
 
             for ( int blue = blue_start; blue <= blue_end; ++blue ) {
                 for ( int red = red_start; red <= red_end; ++red ) {
@@ -413,9 +414,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                     for ( int64_t series = 0; series < num_series; ++series ) {
                         auto series_start = std::chrono::steady_clock::now();
 
-                        // const auto & model_set = model_sets[rand() % model_sets.size()]; // randomly pick a model set for this series
-                        // const std::string & model_path_blue = model_set.first;
-                        // const std::string & model_path_red = model_set.second;
+                        active_models_combination = model_sets[rand() % 4];
+                        std::cout << "Selected: " << active_models_combination << std::endl;
 
                         float series_total_reward = 0.0f;
 
@@ -428,8 +428,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                             trainingGameLoop( false, isProbablyDemoVersion() ); // should push to replay buffers
 
-                            double _blueReward = g_replay_buffer_blue->get_last_reward();
-                            double _redReward = g_replay_buffer_red->get_last_reward();
+                            double _blueReward = getOutRewardForColor_AB( 0x01 );
+                            double _redReward = getOutRewardForColor_AB( 0x04 );
 
                             series_total_reward += _blueReward;
                             series_total_reward += _redReward;
@@ -444,35 +444,17 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                             if ( allowTraining ) {
                                 // ---- Update Q after each game ----
                                 for ( auto & me : models ) {
-                                    if ( me.model && me.optimizer && me.replay_buffer ) {
-                                        if ( me.replay_buffer->size() == 0 ) {
-                                            std::cout << "#1231222 Skipping traiing for: " << me.name << std::endl;
-                                            continue;
-                                        }
-
-                                        try {
-                                            optimize_model( *me.model, *me.optimizer, me.replay_buffer, GAMMA, device );
-                                        }
-                                        catch ( const std::exception & ex ) {
-                                            std::cerr << "#0921123 optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if ( allowTraining ) {
-                            // ---- Soft-update after series completes ----
-                            for ( auto & me : models ) {
-                                if ( me.model && me.optimizer && me.replay_buffer ) {
-                                    /*if ( me.replay_buffer->size() == 0 ) {
-                                        std::cout << "#1231123142 Skipping training for: " << me.name << std::endl;
+                                    if ( me.replay_buffer->size() == 0 ) {
                                         continue;
-                                    }*/
+                                    }
                                     try {
-                                        soft_update_target( *me.model, *me.target, TAU );
+                                        optimize_model( *me.model, *me.optimizer, me.replay_buffer, GAMMA, device );
+                                        if ( ep == episodes_per_series - 1 ) {
+                                            soft_update_target( *me.model, *me.target, TAU );
+                                        }
                                     }
                                     catch ( const std::exception & ex ) {
-                                        std::cout << "#0921902 ERROR SOFTUPDATING TARGETS FOR " << me.name << ": " << ex.what() << std::endl;
+                                        std::cerr << "#0921123 optimize_model exception for " << me.name << ": " << ex.what() << std::endl;
                                     }
                                 }
                             }
@@ -485,8 +467,8 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
                         std::string msg = "Series " + std::to_string( series + 1 ) + "/" + std::to_string( num_series ) + " (" + std::to_string( pct ) + "%)"
                                           + " | Time: " + std::to_string( d.count() ) + "s" + " | Episodes: " + std::to_string( episodes_per_series )
                                           + " | Avg Reward: " + std::to_string( series_total_reward / (double)episodes_per_series )
-                                          + " | Blue win percantage: " + ( std::to_string( ( (double)( blue_wins ) / episodesPerSeries ) * 100 ) )
-                                          + " | Red win percantage: " + ( std::to_string( ( (double)( red_wins ) / episodesPerSeries ) * 100 ) );
+                                          + " | Blue win percantage: " + ( std::to_string( ( (double)( blue_wins ) / episodes_per_series ) * 100 ) )
+                                          + " | Red win percantage: " + ( std::to_string( ( (double)( red_wins ) / episodes_per_series ) * 100 ) );
                         if ( isRunningExperiments ) {
                             msg += " | Blue Troops: " + std::to_string( blue_monster_count ) + " | Red Troops: " + std::to_string( red_monster_count );
                             msg += " | Enemy Type: ";
@@ -522,12 +504,7 @@ int NNAI::training_main( int argc, char ** argv, int64_t num_series, double lear
 
                         if ( allowTraining ) {
                             for ( auto & me : models ) {
-                                if ( me.color == 0x01 )
-                                    // save_qmodel( *me.model, model_set.first ); // TODO MW
-                                    save_qmodel( *me.model, "qmodel_blue_A.pt" ); // TODO MW
-                                else if ( me.color == 0x04 )
-                                    // save_qmodel( *me.model, model_set.second ); // TODO MW
-                                    save_qmodel( *me.model, "qmodel_red_A.pt" ); // TODO MW
+                                save_qmodel( *me.model, "qmodel_" + me.name + ".pt" );
                             }
 
                             // ---- Decay epsilon here ----
@@ -699,7 +676,7 @@ int main( int argc, char ** argv )
     std::cout << "CUDA available: " << torch::cuda::is_available() << std::endl;
     std::cout << "Device: " << NNAI::device << std::endl;
 
-    NNAI::episodesPerSeries = 100;
+    NNAI::episodesPerSeries = 400;
     if ( NNAI::isRunningExperiments ) {
         NNAI::episodesPerSeries = 500;
     }

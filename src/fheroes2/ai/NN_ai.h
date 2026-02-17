@@ -27,7 +27,7 @@ namespace NNAI
     // ---- Configuration constants ----
     const int INPUT_SIZE = 7 * 10; // Size of the input feature vector feature count * troop count
     const int ACTION_SIZE = 99 + 1; // Number of discrete actions tiels on board + skip
-    const int HIDDEN_SIZE = 128 * 4; // Hidden layer size for the Q-network
+    const int HIDDEN_SIZE = 128 * 16; // Hidden layer size for the Q-network
     const int NUM_HIDDEN_LAYERS = 2; // Number of hidden layers in the MLP Q-network
     const size_t REPLAY_BUFFER_CAPACITY = 10000; // Experience replay capacity
     const double GAMMA = 0.99; // Discount factor
@@ -142,8 +142,12 @@ namespace NNAI
     extern std::shared_ptr<QNetwork> g_target_red_B;
 
     // per-model buffers (choose one approach)
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue;
-    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_A;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_blue_B;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_A;
+    extern std::shared_ptr<ReplayBuffer> g_replay_buffer_red_B;
+
+    extern std::string active_models_combination; // "AA, AB, BA, BB"
 
     // Training state
     extern bool isTraining;
@@ -165,7 +169,8 @@ namespace NNAI
     void save_qmodel( const QNetwork & model, const std::string & model_path );
     void load_qmodel( std::shared_ptr<QNetwork> & modelPtr, std::shared_ptr<QNetwork> & targetPtr, const std::string & model_path );
 
-    std::shared_ptr<QNetwork> getQModelByColorAndType( int color, bool isRanged );
+    std::shared_ptr<QNetwork> getQModelByColor_AB( int color );
+    int getOutRewardForColor_AB( int color );
 
     // Epsilon-greedy action selection
     // state_tensor must be a 1D tensor shape [INPUT_SIZE] or 2D [1,INPUT_SIZE]
